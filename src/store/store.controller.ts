@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { StoreService } from './store.service';
 import { Store as StoreModel } from 'generated/prisma';
 
@@ -22,5 +22,18 @@ export class StoreController {
         },
       },
     });
+  }
+
+  @Post()
+  async createStore(
+    @Body() storeData: { name: string; description: string },
+  ): Promise<StoreModel> {
+    const { name, description } = storeData;
+    return this.storeService.createStore({ name, description });
+  }
+
+  @Delete(':id')
+  async deleteStore(@Param('id') id: string): Promise<StoreModel> {
+    return this.storeService.deleteStore({ id: parseInt(id) });
   }
 }

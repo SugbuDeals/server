@@ -36,4 +36,29 @@ export class StoreService {
       orderBy,
     });
   }
+
+  /**
+   * Create store
+   */
+  async createStore(data: Prisma.StoreCreateInput): Promise<Store> {
+    return this.prisma.store.create({ data });
+  }
+
+  /**
+   * Update store
+   */
+  async updateStore(params: {
+    where: Prisma.StoreWhereUniqueInput;
+    data: Prisma.StoreUpdateInput;
+  }): Promise<Store> {
+    const { data, where } = params;
+    return this.prisma.store.update({ where, data });
+  }
+
+  /**
+   * Delete store
+   */
+  async deleteStore(where: Prisma.StoreWhereUniqueInput): Promise<Store> {
+    return this.prisma.store.delete({ where });
+  }
 }
