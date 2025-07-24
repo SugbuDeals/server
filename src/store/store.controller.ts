@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { StoreService } from './store.service';
 import { Store as StoreModel } from 'generated/prisma';
+import { CreateStoreInput } from './dto/createStore.dto';
 
 @Controller('store')
 export class StoreController {
@@ -26,9 +27,9 @@ export class StoreController {
 
   @Post()
   async createStore(
-    @Body() storeData: { name: string; description: string },
+    @Body() createStore: CreateStoreInput,
   ): Promise<StoreModel> {
-    const { name, description } = storeData;
+    const { name, description } = createStore;
     return this.storeService.createStore({ name, description });
   }
 
