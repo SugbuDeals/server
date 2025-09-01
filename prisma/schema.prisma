@@ -22,9 +22,24 @@ model Store {
   description        String
   createdAt          DateTime                @default(now())
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
+
+  Product Product[]
 }
 
 enum StoreVerificationStatus {
   UNVERIFIED
   VERIFIED
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  price       Decimal
+  stock       Int
+  createdAt   DateTime @default(now())
+  isActive    Boolean  @default(true)
+  storeId     Int
+
+  store Store @relation(fields: [storeId], references: [id])
 }
