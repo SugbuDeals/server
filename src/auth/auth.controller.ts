@@ -14,7 +14,6 @@ import { LocalAuthGuard } from './local-auth.guard';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Body() loginDto: LoginDTO) {
     const user = await this.authService.validateUser(

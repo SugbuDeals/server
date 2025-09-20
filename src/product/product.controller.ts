@@ -17,7 +17,7 @@ import { UpdateProductDTO } from './dto/updateProduct.dto';
 @Controller('product')
 export class ProductController {
   constructor(private productService: ProductService) {}
-
+  
   @Get()
   async findManyProducts(
     @Query('storeId') storeId?: string,
