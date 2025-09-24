@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User } from 'generated/prisma';
 import { UsersService } from 'src/users/users.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 
 /**
@@ -12,6 +13,7 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private prisma: PrismaService,
   ) {}
 
   /**
@@ -47,5 +49,35 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
+  }
+
+  /**
+   * Registers a new user
+   * @param email The user's email address
+   * @param password The user's password
+   * @param name The user's name
+   * @returns The registered user object with access token
+   */
+  async register(email: string, password: string, name: string) {
+    // Check if user already exists
+    const existingUser = await this.usersService.user({ email });
+    if (existingUser) {
+      throw new Error('User already exists');
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create the user
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+      },
+    });
+
+    // Generate and return access token
+    return this.login(user);
   }
 }
