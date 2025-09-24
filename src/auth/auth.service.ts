@@ -44,8 +44,18 @@ export class AuthService {
    * @param user The authenticated user object
    * @returns An object containing the signed JWT access token
    */
-  login(user: { id: number; email: string }) {
-    const payload = { email: user.email, sub: user.id };
+  async login(user: { id: number; email: string }) {
+    // Fetch complete user data to get the role
+    const userData = await this.usersService.user({ id: user.id });
+    if (!userData) {
+      throw new Error('User not found');
+    }
+    
+    const payload = { 
+      email: user.email, 
+      sub: user.id,
+      role: userData.role 
+    };
     return {
       access_token: this.jwtService.sign(payload),
     };
