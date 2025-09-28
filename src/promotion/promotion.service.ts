@@ -10,36 +10,23 @@ export class PromotionService {
   create(createPromotionDto: CreatePromotionDto) {
     return this.prisma.promotion.create({
       data: createPromotionDto,
-      include: {
-        product: true,
-      },
     });
   }
 
   findAll() {
-    return this.prisma.promotion.findMany({
-      include: {
-        product: true,
-      },
-    });
+    return this.prisma.promotion.findMany();
   }
 
   findOne(id: number) {
     return this.prisma.promotion.findUnique({
       where: { id },
-      include: {
-        product: true,
-      },
     });
   }
 
   update(id: number, updatePromotionDto: UpdatePromotionDto) {
     return this.prisma.promotion.update({
       where: { id },
-      data: updatePromotionDto,
-      include: {
-        product: true,
-      },
+      data: updatePromotionDto
     });
   }
 
@@ -65,10 +52,7 @@ export class PromotionService {
             },
           },
         ],
-      },
-      include: {
-        product: true,
-      },
+      }
     });
   }
 }
