@@ -8,11 +8,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBody, ApiTags } from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateStoreDTO } from './dto/createStore.dto';
 import { UpdateStoreDTO } from './dto/updateStore.dto';
 
+@ApiTags('Stores')
 @Controller('store')
 export class StoreController {
   constructor(private storeService: StoreService) {}
@@ -29,6 +31,7 @@ export class StoreController {
 
   //@UseGuards(JwtAuthGuard)
   @Post()
+  @ApiBody({ type: CreateStoreDTO })
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
     return this.storeService.create({
       data: createStoreDTO,
@@ -37,6 +40,7 @@ export class StoreController {
 
   //UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @ApiBody({ type: UpdateStoreDTO })
   async updateStore(
     @Param('id') id: string,
     @Body() updateStoreDTO: UpdateStoreDTO,

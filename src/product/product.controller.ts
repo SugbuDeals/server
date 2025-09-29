@@ -9,16 +9,20 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
+import { ApiBody, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
 import { UpdateProductDTO } from './dto/updateProduct.dto';
 
+@ApiTags('Products')
 @Controller('product')
 export class ProductController {
   constructor(private productService: ProductService) {}
   
   @Get()
+  @ApiQuery({ name: 'storeId', required: false, type: Number })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   async findManyProducts(
     @Query('storeId') storeId?: string,
     @Query('isActive') isActive?: string,
@@ -43,6 +47,7 @@ export class ProductController {
 
   //@UseGuards(JwtAuthGuard)
   @Post()
+  @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
     const { storeId, ...productData } = createProductDto;
     
@@ -56,6 +61,7 @@ export class ProductController {
 
   //@UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @ApiBody({ type: UpdateProductDTO })
   async updateProduct(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDTO,
