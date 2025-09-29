@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { ChatRequestDto, TextGenerationDto } from './dto/chat.dto';
-import { ProductRecommendationDto, SimilarProductsDto } from './dto/recommendation.dto';
+import { FreeformRecommendationDto, SimilarProductsDto } from './dto/recommendation.dto';
 
 @Controller('ai')
 export class AiController {
@@ -18,12 +18,11 @@ export class AiController {
   }
 
   @Post('recommendations')
-  async getRecommendations(@Body() request: ProductRecommendationDto) {
-    return this.aiService.generateProductRecommendations(
-      request.userPreferences,
-      request.count,
-    );
+  async getRecommendations(@Body() request: FreeformRecommendationDto) {
+    return this.aiService.getRecommendationsFromQuery(request.query, request.count);
   }
+
+  // Deprecated: merged into unified /ai/recommendations
 
   @Post('similar-products')
   async getSimilarProducts(@Body() request: SimilarProductsDto) {
