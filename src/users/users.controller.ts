@@ -26,7 +26,7 @@ export class UserController {
     return this.userService.user({ id: req.user.sub });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Get()
   async findManyUsers(
     @Query('email') email?: string,
@@ -52,7 +52,7 @@ export class UserController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Delete(':id')
   async deleteUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
