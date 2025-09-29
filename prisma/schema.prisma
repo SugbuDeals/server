@@ -48,5 +48,20 @@ model Product {
   isActive    Boolean  @default(true)
   storeId     Int
 
-  store Store @relation(fields: [storeId], references: [id])
+  store     Store       @relation(fields: [storeId], references: [id])
+  Promotion Promotion[]
+}
+
+model Promotion {
+  id          Int       @id @default(autoincrement())
+  title       String
+  type        String
+  description String
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  active      Boolean   @default(true)
+  discount    Float     @default(0)
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
 }
