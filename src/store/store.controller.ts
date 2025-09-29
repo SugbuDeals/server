@@ -27,7 +27,7 @@ export class StoreController {
     return this.storeService.store({ where: { id: Number(id) } });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Post()
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
     return this.storeService.create({
@@ -35,7 +35,7 @@ export class StoreController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //UseGuards(JwtAuthGuard)
   @Patch(':id')
   async updateStore(
     @Param('id') id: string,
@@ -47,7 +47,7 @@ export class StoreController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //UseGuards(JwtAuthGuard)
   @Delete(':id')
   async deleteStore(@Param('id') id: string) {
     return this.storeService.delete({
