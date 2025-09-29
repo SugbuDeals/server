@@ -41,7 +41,7 @@ export class ProductController {
     return this.productService.product({ id: Number(id) });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Post()
   async createProduct(@Body() createProductDto: CreateProductDTO) {
     const { storeId, ...productData } = createProductDto;
@@ -54,7 +54,7 @@ export class ProductController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Patch(':id')
   async updateProduct(
     @Param('id') id: string,
@@ -66,7 +66,7 @@ export class ProductController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  //@UseGuards(JwtAuthGuard)
   @Delete(':id')
   async deleteProduct(@Param('id') id: string) {
     return this.productService.deleteProduct({ id: Number(id) });
