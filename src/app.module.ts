@@ -6,6 +6,7 @@ import { StoreModule } from './store/store.module';
 import { ProductModule } from './product/product.module';
 import { AiModule } from './ai/ai.module';
 import { PromotionModule } from './promotion/promotion.module';
+import { CategoryModule } from './category/category.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PromotionModule } from './promotion/promotion.module';
     StoreModule,
     ProductModule,
     PromotionModule,
+    CategoryModule,
     AiModule,
   ],
 })
