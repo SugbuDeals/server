@@ -48,8 +48,10 @@ model Product {
   isActive    Boolean  @default(true)
   storeId     Int
 
-  store     Store       @relation(fields: [storeId], references: [id])
-  Promotion Promotion[]
+  store      Store       @relation(fields: [storeId], references: [id])
+  Promotion  Promotion[]
+  Category   Category?   @relation(fields: [categoryId], references: [id])
+  categoryId Int?
 }
 
 model Promotion {
@@ -64,4 +66,13 @@ model Promotion {
 
   product   Product @relation(fields: [productId], references: [id])
   productId Int
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Product Product[]
 }
