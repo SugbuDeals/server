@@ -8,15 +8,18 @@ import {
   Delete,
   ParseIntPipe,
 } from '@nestjs/common';
+import { ApiBody, ApiTags } from '@nestjs/swagger';
 import { PromotionService } from './promotion.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 
+@ApiTags('Promotions')
 @Controller('promotions')
 export class PromotionController {
   constructor(private readonly promotionService: PromotionService) {}
 
   @Post()
+  @ApiBody({ type: CreatePromotionDto })
   create(@Body() createPromotionDto: CreatePromotionDto) {
     return this.promotionService.create(createPromotionDto);
   }
@@ -37,6 +40,7 @@ export class PromotionController {
   }
 
   @Patch(':id')
+  @ApiBody({ type: UpdatePromotionDto })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updatePromotionDto: UpdatePromotionDto,

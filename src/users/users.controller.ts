@@ -8,11 +8,13 @@ import {
   Get,
   Query,
 } from '@nestjs/common';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { User, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
+@ApiTags('Users')
 @Controller('user')
 export class UserController {
   constructor(private userService: UsersService) {}
@@ -28,6 +30,10 @@ export class UserController {
 
   //@UseGuards(JwtAuthGuard)
   @Get()
+  @ApiQuery({ name: 'email', required: false, type: String })
+  @ApiQuery({ name: 'name', required: false, type: String })
+  @ApiQuery({ name: 'take', required: false, type: Number })
+  @ApiQuery({ name: 'skip', required: false, type: Number })
   async findManyUsers(
     @Query('email') email?: string,
     @Query('name') name?: string,
