@@ -7,12 +7,16 @@ import {
   Request,
   Get,
   Query,
+  Patch,
+  Body,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiParam, ApiQuery, ApiTags, ApiUnauthorizedResponse, ApiBadRequestResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { User, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
+import { UpdateUserDTO } from './dto/updateUser.dto';
 
 @ApiTags('Users')
 @Controller('user')
@@ -20,6 +24,10 @@ export class UserController {
   constructor(private userService: UsersService) {}
 
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiOkResponse({ description: 'Returns the requested user' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @Get(':id')
   async findUniqueUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
@@ -34,6 +42,7 @@ export class UserController {
   @ApiQuery({ name: 'name', required: false, type: String })
   @ApiQuery({ name: 'take', required: false, type: Number })
   @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiOkResponse({ description: 'Returns list of users' })
   async findManyUsers(
     @Query('email') email?: string,
     @Query('name') name?: string,
@@ -59,6 +68,10 @@ export class UserController {
   }
 
   //@UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiOkResponse({ description: 'User deleted successfully' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @Delete(':id')
   async deleteUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
@@ -78,5 +91,46 @@ export class UserController {
     throw new UnauthorizedException(
       'You are not authorized to delete this user account',
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiOkResponse({ description: 'User updated successfully' })
+  @ApiBadRequestResponse({ description: 'Invalid user id' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @Patch(':id')
+  async updateUser(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id') id: string,
+    @Body() body: UpdateUserDTO,
+  ): Promise<User> {
+    const userId = Number(id);
+    const requestingUser = req.user;
+
+    if (!userId || Number.isNaN(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
+
+    if (
+      requestingUser.role !== UserRole.ADMIN &&
+      requestingUser.sub !== userId
+    ) {
+      throw new UnauthorizedException(
+        'You are not authorized to update this user account',
+      );
+    }
+
+    const data: any = {};
+    if (typeof body.name === 'string') data.name = body.name;
+    if (typeof body.email === 'string') data.email = body.email;
+    if (
+      typeof body.role !== 'undefined' &&
+      requestingUser.role === UserRole.ADMIN
+    ) {
+      data.role = body.role;
+    }
+
+    return this.userService.update({ where: { id: userId }, data });
   }
 }
