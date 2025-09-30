@@ -71,8 +71,37 @@ User query: "${query}"`;
   }
 
   async getRecommendationsFromQuery(query: string, count: number = 3) {
-    // Force a single product recommendation formatted as one paragraph
+    // If user asks to see all products, bypass AI and return the catalog summary
+    if (this.isShowAllProductsQuery(query)) {
+      return this.listAllProductsSummary();
+    }
+
+    // Default: single product recommendation with one similar alternative in one paragraph
     return this.generateProductRecommendations(query, 1);
+  }
+
+  private isShowAllProductsQuery(query: string): boolean {
+    const q = (query || '').toLowerCase();
+    return (
+      q.includes('show all products') ||
+      q.includes('see all products') ||
+      q.includes('list all products') ||
+      q.includes('list products') ||
+      q.includes('browse products') ||
+      q === 'all products' ||
+      q === 'products'
+    );
+  }
+
+  private async listAllProductsSummary() {
+    const products = await this.productService.products({});
+    const summary = products
+      .map((p) => `${p.name} (₱${p.price})`)
+      .join(', ');
+    return {
+      role: 'assistant',
+      content: summary ? `Available products: ${summary}` : 'No products available.',
+    };
   }
 
   async chat(
@@ -121,12 +150,13 @@ ${productsList}
 
 User preferences: "${userPreferences}"
 
-Task: Recommend exactly 1 product.
+Task: Recommend exactly 1 primary product and include exactly 1 similar alternative.
 Style: One concise paragraph only. No lists, no headings, no extra lines.
-Required content in this order within the paragraph:
-- product name (bold or clear), a short justification (≤18 words), Price: ₱{price}, Distance: {distance in km or "unknown"}.
+Required content in this order within the SAME paragraph:
+- Primary: {product name}, brief justification (≤18 words), Price: ₱{price}, Distance: {km or "unknown"}.
+- Similar: {product name}, Price: ₱{price} (one short reason ≤8 words).
 Output rules:
-- Output a single paragraph only. No numbering, no bullets, no additional paragraphs.`;
+- Output a single paragraph only. No numbering, no bullets, no extra lines.`;
 
     const response = await this.chat([
       {
