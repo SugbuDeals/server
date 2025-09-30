@@ -15,6 +15,9 @@ model User {
   name      String
   createdAt DateTime @default(now())
   role      UserRole @default(CONSUMER)
+
+  StoreBookmark   StoreBookmark[]
+  ProductBookmark ProductBookmark[]
 }
 
 enum UserRole {
@@ -31,6 +34,7 @@ model Store {
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
 
   Product Product[]
+  StoreBookmark StoreBookmark[]
 }
 
 enum StoreVerificationStatus {
@@ -52,6 +56,8 @@ model Product {
   Promotion  Promotion[]
   Category   Category?   @relation(fields: [categoryId], references: [id])
   categoryId Int?
+
+  ProductBookmark ProductBookmark[]
 }
 
 model Promotion {
@@ -75,4 +81,28 @@ model Category {
   updatedAt DateTime @updatedAt
 
   Product Product[]
+}
+
+model StoreBookmark {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  storeId   Int
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId])
+}
+
+model ProductBookmark {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
 }
