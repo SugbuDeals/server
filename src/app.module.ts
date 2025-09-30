@@ -7,6 +7,7 @@ import { ProductModule } from './product/product.module';
 import { AiModule } from './ai/ai.module';
 import { PromotionModule } from './promotion/promotion.module';
 import { CategoryModule } from './category/category.module';
+import { BookmarkModule } from './bookmark/bookmark.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CategoryModule } from './category/category.module';
     ProductModule,
     PromotionModule,
     CategoryModule,
+    BookmarkModule,
     AiModule,
   ],
 })
