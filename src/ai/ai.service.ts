@@ -32,18 +32,41 @@ export class AiService implements OnModuleInit {
   }
 
   private async classifyRecommendationIntent(query: string): Promise<'product' | 'store' | 'promotion'> {
-    const instruction = `Classify the user's recommendation intent as one of: product, store, promotion.
-Return only the single word label with no punctuation.
+    const instruction = `Task: Classify the user's request into exactly one of these labels:
+product | store | promotion
+
+Rules:
+- Output only the single label, lowercase, no punctuation or extra text.
+- "promotion" includes deals, discounts, vouchers, coupons, sales.
+- "store" refers to shops, sellers, merchants, brands, places to buy.
+- "product" refers to specific items, goods, categories, or features.
+
+Examples:
+"Show me discounts on coffee" -> promotion
+"Best shops for laptops" -> store
+"Recommend a budget smartphone" -> product
 
 User query: "${query}"`;
 
-    const res = await this.chat([
-      { role: 'system', content: 'You are an intent classification assistant.' },
-      { role: 'user', content: instruction },
-    ]);
+    const res = await this.chat(
+      [
+        { role: 'system', content: 'You are a precise intent classifier. Respond with one word only.' },
+        { role: 'user', content: instruction },
+      ],
+      { temperature: 0, max_tokens: 5 }
+    );
     const label = res?.content?.toLowerCase().trim() || 'product';
-    if (label.includes('store')) return 'store';
-    if (label.includes('promotion') || label.includes('deal') || label.includes('discount')) return 'promotion';
+    if (label.includes('store') || label.includes('merchant') || label.includes('shop')) return 'store';
+    if (
+      label.includes('promotion') ||
+      label.includes('promo') ||
+      label.includes('deal') ||
+      label.includes('discount') ||
+      label.includes('sale') ||
+      label.includes('voucher') ||
+      label.includes('coupon')
+    )
+      return 'promotion';
     return 'product';
   }
 
@@ -60,17 +83,24 @@ User query: "${query}"`;
 
   async chat(
     messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    options?: Partial<{ temperature: number; max_tokens: number; top_p: number; stream: boolean; model: string }>,
   ) {
     const completion = await this.groq.chat.completions.create({
       messages,
-      model: await this.getModelName(),
-      temperature: 0.7,
-      max_tokens: 1000,
-      top_p: 1,
-      stream: false,
+      model: options?.model ?? (await this.getModelName()),
+      temperature: options?.temperature ?? 0.7,
+      max_tokens: options?.max_tokens ?? 1000,
+      top_p: options?.top_p ?? 1,
+      stream: options?.stream ?? false,
     });
 
-    return completion.choices[0]?.message;
+    if ('choices' in completion) {
+      return completion.choices[0]?.message;
+    }
+
+    // If a streaming response was requested, we currently do not support
+    // accumulating streamed chunks in this helper.
+    throw new Error('Streaming responses are not supported by chat() helper yet.');
   }
 
   async generateText(prompt: string) {
@@ -92,17 +122,17 @@ User query: "${query}"`;
 
     const productsList = await this.formatProductsForAI(products);
 
-    const prompt = `Given the following list of products:
+    const prompt = `Context — products:
 ${productsList}
 
-And considering these user preferences: "${userPreferences}"
+User preferences: "${userPreferences}"
 
-Please recommend ${count} products that best match the user's preferences. For each recommendation:
-1. Explain why it's a good match
-2. Highlight key features that align with the preferences
-3. Add a personalized note about how the user might benefit from it
-
-Format the response as a clear, easy-to-read list.`;
+Task: Recommend exactly ${count} products.
+Style: Brief, skimmable, actionable.
+Format: Numbered list. For each item include exactly 3 short bullets:
+- match: ≤12 words on why it fits
+- key: 1 standout feature
+- benefit: ≤10 words on user value`;
 
     const response = await this.chat([
       {
@@ -129,17 +159,17 @@ Format the response as a clear, easy-to-read list.`;
     const activePromotions = await this.promotionService.findActive();
     const promotionsList = await this.formatPromotionsForAI(activePromotions);
 
-    const prompt = `Given the following active promotions:
+    const prompt = `Context — active promotions:
 ${promotionsList}
 
-And considering these user preferences: "${userPreferences}"
+User preferences: "${userPreferences}"
 
-Please recommend ${count} promotions that best match the user's interests. For each recommendation:
-1. Explain why it matches the user's preferences
-2. Mention the associated product/category if relevant
-3. Provide a brief, persuasive benefit statement
-
-Format the response as a clear, easy-to-read list.`;
+Task: Recommend exactly ${count} promotions.
+Style: Brief, skimmable, actionable.
+Format: Numbered list. For each item include exactly 3 short bullets:
+- match: ≤12 words
+- applies_to: product/category if relevant
+- benefit: ≤10 words`;
 
     const response = await this.chat([
       {
@@ -166,17 +196,17 @@ Format the response as a clear, easy-to-read list.`;
     const stores = await this.storeService.stores({});
     const storesList = await this.formatStoresForAI(stores);
 
-    const prompt = `Given the following list of stores:
+    const prompt = `Context — stores:
 ${storesList}
 
-And considering these user preferences: "${userPreferences}"
+User preferences: "${userPreferences}"
 
-Please recommend ${count} stores that best match the user's interests. For each recommendation:
-1. Explain why it matches the user's preferences
-2. Mention what the store is known for
-3. Provide a short persuasive reason to visit
-
-Format the response as a clear, easy-to-read list.`;
+Task: Recommend exactly ${count} stores.
+Style: Brief, skimmable, actionable.
+Format: Numbered list. For each item include exactly 3 short bullets:
+- match: ≤12 words
+- known_for: what it’s known for
+- benefit: ≤10 words`;
 
     const response = await this.chat([
       {
@@ -206,18 +236,18 @@ Format the response as a clear, easy-to-read list.`;
 
     const productsList = await this.formatProductsForAI(products);
 
-    const prompt = `Given this target product:
+    const prompt = `Target product:
 - ${targetProduct.name}: ${targetProduct.description} (Price: ₱${targetProduct.price})
 
-And this list of other available products:
+Other available products:
 ${productsList}
 
-Please recommend ${count} similar products that a customer might be interested in. For each recommendation:
-1. Explain why it's similar to ${targetProduct.name}
-2. Highlight the key similarities and differences
-3. Explain why a customer might want to consider this alternative
-
-Format the response as a clear, easy-to-read list.`;
+Task: Recommend exactly ${count} similar products.
+Style: Brief, skimmable, actionable.
+Format: Numbered list. For each item include exactly 3 short bullets:
+- similarity: key reason it’s similar to ${targetProduct.name}
+- diff: one notable difference
+- why: ≤10 words on user value`;
 
     const response = await this.chat([
       {
