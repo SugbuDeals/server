@@ -9,7 +9,7 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBody, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
@@ -21,8 +21,10 @@ export class ProductController {
   constructor(private productService: ProductService) {}
   
   @Get()
+  @ApiOperation({ summary: 'List products with optional filters' })
   @ApiQuery({ name: 'storeId', required: false, type: Number })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  @ApiOkResponse({ description: 'Returns list of products' })
   async findManyProducts(
     @Query('storeId') storeId?: string,
     @Query('isActive') isActive?: string,
@@ -41,12 +43,16 @@ export class ProductController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get product by id' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Returns a product' })
   async findUniqueProduct(@Param('id') id: string) {
     return this.productService.product({ id: Number(id) });
   }
 
   //@UseGuards(JwtAuthGuard)
   @Post()
+  @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
     const { storeId, ...productData } = createProductDto;
@@ -61,6 +67,8 @@ export class ProductController {
 
   //@UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @ApiOperation({ summary: 'Update a product' })
+  @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateProductDTO })
   async updateProduct(
     @Param('id') id: string,
@@ -74,6 +82,9 @@ export class ProductController {
 
   //@UseGuards(JwtAuthGuard)
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete a product' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Product deleted' })
   async deleteProduct(@Param('id') id: string) {
     return this.productService.deleteProduct({ id: Number(id) });
   }
