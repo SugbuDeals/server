@@ -19,8 +19,24 @@ async function bootstrap() {
 
   const options = new DocumentBuilder()
     .setTitle('SugbuDeals API')
-    .setVersion('1.0')
-    .addBearerAuth()
+    .setDescription('REST API for SugbuDeals: authentication, users, stores, products, categories, promotions, and AI endpoints.')
+    .setVersion('1.0.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Include JWT token as: Bearer <token>'
+      },
+      'bearer'
+    )
+    .addTag('Auth', 'Authentication endpoints')
+    .addTag('Users', 'User management endpoints')
+    .addTag('Stores', 'Store management endpoints')
+    .addTag('Products', 'Product management endpoints')
+    .addTag('Categories', 'Category management endpoints')
+    .addTag('Promotions', 'Promotion management endpoints')
+    .addTag('AI', 'AI chat, generation, and recommendations')
     .build();
 
   const document = SwaggerModule.createDocument(app, options);
