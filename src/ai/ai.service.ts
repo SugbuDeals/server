@@ -71,14 +71,8 @@ User query: "${query}"`;
   }
 
   async getRecommendationsFromQuery(query: string, count: number = 3) {
-    const intent = await this.classifyRecommendationIntent(query);
-    if (intent === 'store') {
-      return this.generateStoreRecommendations(query, count);
-    }
-    if (intent === 'promotion') {
-      return this.generatePromotionRecommendations(query, count);
-    }
-    return this.generateProductRecommendations(query, count);
+    // Force a single product recommendation formatted as one paragraph
+    return this.generateProductRecommendations(query, 1);
   }
 
   async chat(
@@ -127,12 +121,12 @@ ${productsList}
 
 User preferences: "${userPreferences}"
 
-Task: Recommend exactly ${count} products.
-Style: Brief, skimmable, actionable.
-Format: Numbered list. For each item include exactly 3 short bullets:
-- match: ≤12 words on why it fits
-- key: 1 standout feature
-- benefit: ≤10 words on user value`;
+Task: Recommend exactly 1 product.
+Style: One concise paragraph only. No lists, no headings, no extra lines.
+Required content in this order within the paragraph:
+- product name (bold or clear), a short justification (≤18 words), Price: ₱{price}, Distance: {distance in km or "unknown"}.
+Output rules:
+- Output a single paragraph only. No numbering, no bullets, no additional paragraphs.`;
 
     const response = await this.chat([
       {
