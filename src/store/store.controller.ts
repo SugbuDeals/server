@@ -8,7 +8,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateStoreDTO } from './dto/createStore.dto';
@@ -20,6 +26,7 @@ export class StoreController {
   constructor(private storeService: StoreService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'List stores' })
   @ApiOkResponse({ description: 'Returns list of stores' })
   async findManyStores() {
@@ -34,8 +41,8 @@ export class StoreController {
     return this.storeService.store({ where: { id: Number(id) } });
   }
 
-  //@UseGuards(JwtAuthGuard)
   @Post()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a store' })
   @ApiBody({ type: CreateStoreDTO })
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
@@ -44,8 +51,8 @@ export class StoreController {
     });
   }
 
-  //UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateStoreDTO })
@@ -59,8 +66,8 @@ export class StoreController {
     });
   }
 
-  //UseGuards(JwtAuthGuard)
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Store deleted' })

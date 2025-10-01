@@ -9,7 +9,14 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
@@ -19,8 +26,9 @@ import { UpdateProductDTO } from './dto/updateProduct.dto';
 @Controller('product')
 export class ProductController {
   constructor(private productService: ProductService) {}
-  
+
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'List products with optional filters' })
   @ApiQuery({ name: 'storeId', required: false, type: Number })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
@@ -30,11 +38,11 @@ export class ProductController {
     @Query('isActive') isActive?: string,
   ) {
     const where: any = {};
-    
+
     if (storeId) {
       where.storeId = Number(storeId);
     }
-    
+
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
     }
@@ -43,6 +51,7 @@ export class ProductController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get product by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a product' })
@@ -50,23 +59,23 @@ export class ProductController {
     return this.productService.product({ id: Number(id) });
   }
 
-  //@UseGuards(JwtAuthGuard)
   @Post()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
     const { storeId, ...productData } = createProductDto;
-    
+
     return this.productService.createProduct({
       ...productData,
       store: {
-        connect: { id: storeId }
-      }
+        connect: { id: storeId },
+      },
     });
   }
 
-  //@UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateProductDTO })
@@ -80,8 +89,8 @@ export class ProductController {
     });
   }
 
-  //@UseGuards(JwtAuthGuard)
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Product deleted' })
