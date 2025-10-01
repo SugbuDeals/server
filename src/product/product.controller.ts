@@ -16,6 +16,7 @@ import {
   ApiParam,
   ApiQuery,
   ApiTags,
+  ApiBearerAuth
 } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -29,6 +30,7 @@ export class ProductController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List products with optional filters' })
   @ApiQuery({ name: 'storeId', required: false, type: Number })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
@@ -52,6 +54,7 @@ export class ProductController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get product by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a product' })
@@ -61,6 +64,7 @@ export class ProductController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
@@ -76,6 +80,7 @@ export class ProductController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateProductDTO })
@@ -91,6 +96,7 @@ export class ProductController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Product deleted' })

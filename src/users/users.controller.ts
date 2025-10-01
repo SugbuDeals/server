@@ -50,6 +50,7 @@ export class UserController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiQuery({ name: 'email', required: false, type: String })
   @ApiQuery({ name: 'name', required: false, type: String })
   @ApiQuery({ name: 'take', required: false, type: Number })

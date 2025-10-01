@@ -9,7 +9,14 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiBearerAuth
+} from '@nestjs/swagger';
 import { PromotionService } from './promotion.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
@@ -22,6 +29,7 @@ export class PromotionController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiBody({ type: CreatePromotionDto })
   create(@Body() createPromotionDto: CreatePromotionDto) {
@@ -30,6 +38,7 @@ export class PromotionController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List promotions' })
   @ApiOkResponse({ description: 'Returns list of promotions' })
   findAll() {
@@ -38,6 +47,7 @@ export class PromotionController {
 
   @Get('active')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List active promotions' })
   @ApiOkResponse({ description: 'Returns list of active promotions' })
   findActive() {
@@ -46,6 +56,7 @@ export class PromotionController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get promotion by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a promotion' })
@@ -55,6 +66,7 @@ export class PromotionController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdatePromotionDto })
@@ -67,6 +79,7 @@ export class PromotionController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Promotion deleted' })
