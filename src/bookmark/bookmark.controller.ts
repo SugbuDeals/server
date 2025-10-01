@@ -1,20 +1,38 @@
-import { Body, Controller, Delete, Post, Request, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BookmarkService } from './bookmark.service';
 import { ListBookmarksDto, StoreBookmarkDto } from './dto/store-bookmark.dto';
 import { ProductBookmarkDto } from './dto/product-bookmark.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
-class IdParamDto { id!: number }
+class IdParamDto {
+  id!: number;
+}
 
-class BookmarkTargetDto { id!: number }
+class BookmarkTargetDto {
+  id!: number;
+}
 
 @ApiTags('Bookmarks')
 @Controller('bookmarks')
 export class BookmarkController {
   constructor(private readonly bookmarkService: BookmarkService) {}
 
+  @Post('stores/list')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List user bookmarked stores' })
@@ -28,7 +46,6 @@ export class BookmarkController {
       },
     },
   })
-  @Post('stores/list')
   async listMyStoreBookmarks(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: ListBookmarksDto,
@@ -36,6 +53,7 @@ export class BookmarkController {
     return this.bookmarkService.listStoreBookmarks(req.user.sub);
   }
 
+  @Post('stores')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Bookmark a store' })
@@ -48,7 +66,6 @@ export class BookmarkController {
       },
     },
   })
-  @Post('stores')
   async bookmarkStore(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: StoreBookmarkDto,
@@ -56,6 +73,7 @@ export class BookmarkController {
     return this.bookmarkService.bookmarkStore(req.user.sub, body.storeId);
   }
 
+  @Delete('stores')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Remove store bookmark' })
@@ -68,7 +86,6 @@ export class BookmarkController {
       },
     },
   })
-  @Delete('stores')
   async unbookmarkStore(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: StoreBookmarkDto,
@@ -76,6 +93,7 @@ export class BookmarkController {
     return this.bookmarkService.unbookmarkStore(req.user.sub, body.storeId);
   }
 
+  @Post('products/list')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List user bookmarked products' })
@@ -89,7 +107,6 @@ export class BookmarkController {
       },
     },
   })
-  @Post('products/list')
   async listMyProductBookmarks(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: ListBookmarksDto,
@@ -97,6 +114,7 @@ export class BookmarkController {
     return this.bookmarkService.listProductBookmarks(req.user.sub);
   }
 
+  @Post('products')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Bookmark a product' })
@@ -109,7 +127,6 @@ export class BookmarkController {
       },
     },
   })
-  @Post('products')
   async bookmarkProduct(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: ProductBookmarkDto,
@@ -117,6 +134,7 @@ export class BookmarkController {
     return this.bookmarkService.bookmarkProduct(req.user.sub, body.productId);
   }
 
+  @Delete('products')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Remove product bookmark' })
@@ -129,7 +147,6 @@ export class BookmarkController {
       },
     },
   })
-  @Delete('products')
   async unbookmarkProduct(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() body: ProductBookmarkDto,
@@ -137,5 +154,3 @@ export class BookmarkController {
     return this.bookmarkService.unbookmarkProduct(req.user.sub, body.productId);
   }
 }
-
-
