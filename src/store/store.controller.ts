@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -27,6 +28,7 @@ export class StoreController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List stores' })
   @ApiOkResponse({ description: 'Returns list of stores' })
   async findManyStores() {
@@ -34,6 +36,8 @@ export class StoreController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get store by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a store' })
@@ -43,6 +47,7 @@ export class StoreController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a store' })
   @ApiBody({ type: CreateStoreDTO })
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
@@ -53,6 +58,7 @@ export class StoreController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateStoreDTO })
@@ -68,6 +74,7 @@ export class StoreController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Store deleted' })
