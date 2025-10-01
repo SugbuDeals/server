@@ -1,8 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CategoryService } from './category.service';
 import { CreateCategoryDTO } from './dto/createCategory.dto';
 import { UpdateCategoryDTO } from './dto/updateCategory.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @ApiTags('Categories')
 @Controller('category')
@@ -10,6 +26,7 @@ export class CategoryController {
   constructor(private categoryService: CategoryService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'List categories' })
   @ApiOkResponse({ description: 'Returns list of categories' })
   async findManyCategories() {
@@ -17,6 +34,7 @@ export class CategoryController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get category by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a category' })
@@ -25,6 +43,7 @@ export class CategoryController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a category' })
   @ApiBody({ type: CreateCategoryDTO })
   async createCategory(@Body() createCategoryDTO: CreateCategoryDTO) {
@@ -32,6 +51,7 @@ export class CategoryController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateCategoryDTO })
@@ -46,6 +66,7 @@ export class CategoryController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Category deleted' })
@@ -53,5 +74,3 @@ export class CategoryController {
     return this.categoryService.deleteCategory({ id: Number(id) });
   }
 }
-
-

@@ -7,11 +7,13 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { PromotionService } from './promotion.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @ApiTags('Promotions')
 @Controller('promotions')
@@ -19,6 +21,7 @@ export class PromotionController {
   constructor(private readonly promotionService: PromotionService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiBody({ type: CreatePromotionDto })
   create(@Body() createPromotionDto: CreatePromotionDto) {
@@ -26,6 +29,7 @@ export class PromotionController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'List promotions' })
   @ApiOkResponse({ description: 'Returns list of promotions' })
   findAll() {
@@ -33,6 +37,7 @@ export class PromotionController {
   }
 
   @Get('active')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'List active promotions' })
   @ApiOkResponse({ description: 'Returns list of active promotions' })
   findActive() {
@@ -40,6 +45,7 @@ export class PromotionController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get promotion by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Returns a promotion' })
@@ -48,6 +54,7 @@ export class PromotionController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdatePromotionDto })
@@ -59,6 +66,7 @@ export class PromotionController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Promotion deleted' })

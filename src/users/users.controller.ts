@@ -11,7 +11,15 @@ import {
   Body,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiParam, ApiQuery, ApiTags, ApiUnauthorizedResponse, ApiBadRequestResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+  ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { User, UserRole } from 'generated/prisma';
@@ -23,21 +31,25 @@ import { UpdateUserDTO } from './dto/updateUser.dto';
 export class UserController {
   constructor(private userService: UsersService) {}
 
+  @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'User id',
+    type: Number,
+  })
   @ApiOkResponse({ description: 'Returns the requested user' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
-  @Get(':id')
   async findUniqueUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
-
   ): Promise<User | null> {
     return this.userService.user({ id: req.user.sub });
   }
 
-  //@UseGuards(JwtAuthGuard)
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiQuery({ name: 'email', required: false, type: String })
   @ApiQuery({ name: 'name', required: false, type: String })
   @ApiQuery({ name: 'take', required: false, type: Number })
@@ -50,11 +62,11 @@ export class UserController {
     @Query('skip') skip = '0',
   ): Promise<User[]> {
     const where: any = {};
-    
+
     if (email) {
       where.email = { contains: email, mode: 'insensitive' };
     }
-    
+
     if (name) {
       where.name = { contains: name, mode: 'insensitive' };
     }
@@ -63,16 +75,21 @@ export class UserController {
       where,
       take: parseInt(take),
       skip: parseInt(skip),
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  //@UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'User id',
+    type: Number,
+  })
   @ApiOkResponse({ description: 'User deleted successfully' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
-  @Delete(':id')
   async deleteUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
@@ -93,13 +110,18 @@ export class UserController {
     );
   }
 
+  @Patch(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiParam({ name: 'id', required: true, description: 'User id', type: Number })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'User id',
+    type: Number,
+  })
   @ApiOkResponse({ description: 'User updated successfully' })
   @ApiBadRequestResponse({ description: 'Invalid user id' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
-  @Patch(':id')
   async updateUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
