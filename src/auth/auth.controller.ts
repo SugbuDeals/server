@@ -4,13 +4,22 @@ import {
   Post,
   UnauthorizedException,
   UseGuards,
+  Request,
 } from '@nestjs/common';
-import { ApiBody, ApiTags, ApiOperation, ApiOkResponse, ApiCreatedResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiTags,
+  ApiOperation,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDTO } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LocalAuthGuard } from './local-auth.guard';
 import { RegisterDTO } from './dto/register.dto';
+import { PayloadDTO } from './dto/payload.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -27,10 +36,16 @@ export class AuthController {
       loginDto.email,
       loginDto.password,
     );
+
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return this.authService.login(user);
+    const { access_token } = await this.authService.login(user);
+
+    return {
+      access_token,
+      user,
+    };
   }
 
   @Post('register')
