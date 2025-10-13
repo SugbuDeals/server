@@ -36,7 +36,8 @@ export class AuthService {
       return null;
     }
 
-    return user;
+    const { password: _, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
   /**
@@ -50,11 +51,11 @@ export class AuthService {
     if (!userData) {
       throw new Error('User not found');
     }
-    
-    const payload = { 
-      email: user.email, 
+
+    const payload = {
+      email: user.email,
       sub: user.id,
-      role: userData.role 
+      role: userData.role,
     };
     return {
       access_token: this.jwtService.sign(payload),
