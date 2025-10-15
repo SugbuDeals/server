@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from 'generated/prisma';
+import { User, UserRole } from 'generated/prisma';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
@@ -69,7 +69,12 @@ export class AuthService {
    * @param name The user's name
    * @returns The registered user object with access token
    */
-  async register(email: string, password: string, name: string) {
+  async register(
+    email: string,
+    password: string,
+    name: string,
+    role: UserRole,
+  ) {
     // Check if user already exists
     const existingUser = await this.usersService.user({ email });
     if (existingUser) {
@@ -85,6 +90,7 @@ export class AuthService {
         email,
         password: hashedPassword,
         name,
+        role,
       },
     });
 
