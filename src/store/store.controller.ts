@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -15,11 +17,13 @@ import {
   ApiParam,
   ApiTags,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { StoreService } from './store.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateStoreDTO } from './dto/createStore.dto';
 import { UpdateStoreDTO } from './dto/updateStore.dto';
+import { Prisma } from 'generated/prisma';
 
 @ApiTags('Stores')
 @Controller('store')
@@ -30,9 +34,64 @@ export class StoreController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List stores' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search stores by name or description',
+  })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Number of records to take',
+  })
   @ApiOkResponse({ description: 'Returns list of stores' })
-  async findManyStores() {
-    return this.storeService.stores({});
+  async findManyStores(
+    @Query('search') search?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    const skipNum = skip ? parseInt(skip, 10) : undefined;
+    const takeNum = take ? parseInt(take, 10) : undefined;
+    const searchQuery = search && search.length > 0 ? search : undefined;
+
+    // Validate pagination parameters
+    if (skipNum !== undefined && (isNaN(skipNum) || skipNum < 0)) {
+      throw new BadRequestException('Skip must be a non-negative number');
+    }
+    if (takeNum !== undefined && (isNaN(takeNum) || takeNum <= 0)) {
+      throw new BadRequestException('Take must be a positive number');
+    }
+
+    return this.storeService.stores({
+      skip: skipNum,
+      take: takeNum,
+      where: searchQuery
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: searchQuery,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                description: {
+                  contains: searchQuery,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : undefined,
+    });
   }
 
   @Get(':id')
