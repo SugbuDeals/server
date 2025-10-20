@@ -1,110 +1,53 @@
 import { Store } from 'generated/prisma';
 
-const stores = [
+const stores: Store[] = [
   {
     id: 1,
-    name: 'TechHub Electronics',
+    name: 'Fresh Market Central',
     description:
-      'Your one-stop shop for the latest gadgets, smartphones, laptops, and tech accessories. We offer competitive prices and excellent customer service.',
-    verificationStatus: 'VERIFIED' as const,
+      'Your one-stop shop for fresh groceries, organic produce, and daily essentials. We pride ourselves on quality and freshness.',
+    createdAt: new Date('2024-01-15T08:00:00Z'),
+    verificationStatus: 'VERIFIED',
   },
   {
     id: 2,
-    name: "Bella's Fashion Boutique",
+    name: 'TechGear Hub',
     description:
-      'Trendy clothing and accessories for women. From casual wear to elegant evening dresses, find your perfect style here.',
-    verificationStatus: 'VERIFIED' as const,
+      'Latest electronics, gadgets, and tech accessories. From smartphones to laptops, we have everything tech enthusiasts need.',
+    createdAt: new Date('2024-02-20T10:30:00Z'),
+    verificationStatus: 'VERIFIED',
   },
   {
     id: 3,
-    name: 'Green Garden Supplies',
+    name: 'Fashion Forward Boutique',
     description:
-      'Everything you need for your garden - seeds, tools, fertilizers, and outdoor furniture. Making gardening accessible to everyone.',
-    verificationStatus: 'UNVERIFIED' as const,
+      'Trendy clothing and accessories for men and women. Stay stylish with our curated collection of fashion items.',
+    createdAt: new Date('2024-03-10T09:15:00Z'),
+    verificationStatus: 'VERIFIED',
   },
   {
     id: 4,
-    name: 'Fitness Zone',
+    name: 'Home & Garden Paradise',
     description:
-      'Premium gym equipment, workout supplements, and athletic wear. Achieve your fitness goals with our quality products.',
-    verificationStatus: 'VERIFIED' as const,
+      'Everything you need for your home and garden. Furniture, decor, plants, and gardening tools all in one place.',
+    createdAt: new Date('2024-04-05T11:00:00Z'),
+    verificationStatus: 'UNVERIFIED',
   },
   {
     id: 5,
-    name: 'BookWorm Haven',
+    name: 'Sports & Fitness Pro',
     description:
-      'A paradise for book lovers featuring bestsellers, rare finds, and educational materials across all genres.',
-    verificationStatus: 'VERIFIED' as const,
+      'Professional sports equipment, fitness gear, and athletic apparel. Get fit with quality products.',
+    createdAt: new Date('2024-05-12T07:45:00Z'),
+    verificationStatus: 'VERIFIED',
   },
   {
     id: 6,
-    name: 'Pet Paradise',
+    name: 'Book Haven',
     description:
-      'Complete pet care solutions including food, toys, grooming supplies, and accessories for dogs, cats, and small animals.',
-    verificationStatus: 'UNVERIFIED' as const,
-  },
-  {
-    id: 7,
-    name: 'HomeCraft Essentials',
-    description:
-      'Quality home improvement tools, furniture, and decor items to transform your living space.',
-    verificationStatus: 'PENDING' as const,
-  },
-  {
-    id: 8,
-    name: 'Gourmet Delights',
-    description:
-      'Artisanal food products, organic ingredients, and specialty items from around the world for food enthusiasts.',
-    verificationStatus: 'VERIFIED' as const,
-  },
-  {
-    id: 9,
-    name: 'Kids Kingdom',
-    description:
-      "Educational toys, children's clothing, and baby products. Safe, fun, and developmental items for your little ones.",
-    verificationStatus: 'UNVERIFIED' as const,
-  },
-  {
-    id: 10,
-    name: 'Auto Parts Pro',
-    description:
-      'Genuine and aftermarket car parts, accessories, and maintenance supplies for all vehicle makes and models.',
-    verificationStatus: 'PENDING' as const,
-  },
-  {
-    id: 11,
-    name: 'Beauty Bliss',
-    description:
-      'Premium cosmetics, skincare products, and beauty tools. Cruelty-free and organic options available.',
-    verificationStatus: 'VERIFIED' as const,
-  },
-  {
-    id: 12,
-    name: 'Office Supplies Plus',
-    description:
-      'Everything for your workspace - stationery, office furniture, printers, and organizational solutions.',
-    verificationStatus: 'UNVERIFIED' as const,
-  },
-  {
-    id: 13,
-    name: 'Sports Arena',
-    description:
-      'Sports equipment and gear for basketball, football, tennis, swimming, and more. Quality brands at affordable prices.',
-    verificationStatus: 'VERIFIED' as const,
-  },
-  {
-    id: 14,
-    name: 'Music Masters',
-    description:
-      'Musical instruments, sound equipment, and accessories for beginners and professionals alike.',
-    verificationStatus: 'PENDING' as const,
-  },
-  {
-    id: 15,
-    name: 'Craft Corner',
-    description:
-      'Art supplies, crafting materials, and DIY kits for creative projects. Inspire your artistic side.',
-    verificationStatus: 'UNVERIFIED' as const,
+      'A paradise for book lovers. Wide selection of books across all genres, stationery, and educational materials.',
+    createdAt: new Date('2024-06-18T14:20:00Z'),
+    verificationStatus: 'UNVERIFIED',
   },
 ];
 

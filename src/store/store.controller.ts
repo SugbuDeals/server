@@ -110,8 +110,18 @@ export class StoreController {
   @ApiOperation({ summary: 'Create a store' })
   @ApiBody({ type: CreateStoreDTO })
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
+    const { name, description, ownerId } = createStoreDTO;
+
     return this.storeService.create({
-      data: createStoreDTO,
+      data: {
+        name,
+        description,
+        owner: {
+          connect: {
+            id: ownerId,
+          },
+        },
+      },
     });
   }
 
