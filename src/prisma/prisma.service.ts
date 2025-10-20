@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from 'generated/prisma';
 import stores from './data/store.data';
 import products from './data/product.data';
+import users from './data/user.data';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
@@ -21,6 +22,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     this.logger.log('🌱 Starting database seeding...');
 
     try {
+      // users
+      for (const user of users) {
+        await this.user.upsert({
+          where: {
+            id: user.id,
+          },
+          create: {
+            ...user,
+          },
+          update: {},
+        });
+      }
       // store
       for (const { id, name, description } of stores) {
         await this.store.upsert({
