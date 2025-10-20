@@ -15,9 +15,11 @@ model User {
   name      String
   createdAt DateTime @default(now())
   role      UserRole @default(CONSUMER)
+  storeId   Int?     @unique
 
   StoreBookmark   StoreBookmark[]
   ProductBookmark ProductBookmark[]
+  Store           Store?            @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: SetNull)
 }
 
 enum UserRole {
@@ -32,8 +34,9 @@ model Store {
   description        String
   createdAt          DateTime                @default(now())
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
+  owner              User?
 
-  Product Product[]
+  Product       Product[]
   StoreBookmark StoreBookmark[]
 }
 
@@ -52,9 +55,9 @@ model Product {
   isActive    Boolean  @default(true)
   storeId     Int
 
-  store      Store       @relation(fields: [storeId], references: [id])
+  store      Store       @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   Promotion  Promotion[]
-  Category   Category?   @relation(fields: [categoryId], references: [id])
+  Category   Category?   @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
   categoryId Int?
 
   ProductBookmark ProductBookmark[]
@@ -70,8 +73,8 @@ model Promotion {
   active      Boolean   @default(true)
   discount    Float     @default(0)
 
-  product   Product @relation(fields: [productId], references: [id])
-  productId Int
+  product   Product? @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  productId Int?
 }
 
 model Category {
@@ -89,8 +92,8 @@ model StoreBookmark {
   storeId   Int
   createdAt DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id])
-  store Store @relation(fields: [storeId], references: [id])
+  user  User  @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([userId, storeId])
 }
@@ -101,8 +104,8 @@ model ProductBookmark {
   productId Int
   createdAt DateTime @default(now())
 
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([userId, productId])
 }
