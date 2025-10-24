@@ -16,7 +16,7 @@ import {
   ApiParam,
   ApiQuery,
   ApiTags,
-  ApiBearerAuth
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -68,10 +68,15 @@ export class ProductController {
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
-    const { storeId, ...productData } = createProductDto;
+    const { name, description, price, stock, isActive, storeId } =
+      createProductDto;
 
     return this.productService.createProduct({
-      ...productData,
+      name,
+      description,
+      price,
+      stock,
+      isActive,
       store: {
         connect: { id: storeId },
       },

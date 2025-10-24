@@ -15,11 +15,10 @@ model User {
   name      String
   createdAt DateTime @default(now())
   role      UserRole @default(CONSUMER)
-  storeId   Int?     @unique
 
+  Store           Store[]
   StoreBookmark   StoreBookmark[]
   ProductBookmark ProductBookmark[]
-  Store           Store?            @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: SetNull)
 }
 
 enum UserRole {
@@ -34,10 +33,11 @@ model Store {
   description        String
   createdAt          DateTime                @default(now())
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
-  owner              User?
+  ownerId            Int
 
-  Product       Product[]
-  StoreBookmark StoreBookmark[]
+  owner     User            @relation(fields: [ownerId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  products  Product[]
+  bookmarks StoreBookmark[]
 }
 
 enum StoreVerificationStatus {
@@ -54,13 +54,12 @@ model Product {
   createdAt   DateTime @default(now())
   isActive    Boolean  @default(true)
   storeId     Int
+  categoryId  Int?
 
-  store      Store       @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  Promotion  Promotion[]
-  Category   Category?   @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  categoryId Int?
-
-  ProductBookmark ProductBookmark[]
+  store      Store             @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  category   Category?         @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  bookmarks  ProductBookmark[]
+  promotions Promotion[]
 }
 
 model Promotion {
@@ -72,9 +71,9 @@ model Promotion {
   endsAt      DateTime?
   active      Boolean   @default(true)
   discount    Float     @default(0)
+  productId   Int?
 
-  product   Product? @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  productId Int?
+  product Product? @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: SetNull)
 }
 
 model Category {
@@ -83,7 +82,7 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  Product Product[]
+  products Product[]
 }
 
 model StoreBookmark {
