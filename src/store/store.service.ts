@@ -63,9 +63,10 @@ export class StoreService {
   async update(params: {
     where: Prisma.StoreWhereUniqueInput;
     data: Prisma.StoreUpdateInput;
+    include?: Prisma.StoreInclude;
   }): Promise<Store> {
-    const { where, data } = params;
-    return this.prisma.store.update({ where, data });
+    const { where, data, include } = params;
+    return this.prisma.store.update({ where, data, include });
   }
 
   /**

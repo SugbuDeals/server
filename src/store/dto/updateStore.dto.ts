@@ -6,15 +6,15 @@ import { Type } from 'class-transformer';
 export class UpdateStoreDTO {
   @ApiPropertyOptional({ example: 'Tech Hub' })
   @IsOptional()
-  name: string;
+  name?: string;
 
   @ApiPropertyOptional({ example: 'Your friendly gadget store' })
   @IsOptional()
-  description: string;
+  description?: string;
 
   @ApiPropertyOptional({ enum: StoreVerificationStatus })
   @IsOptional()
-  verificationStatus: StoreVerificationStatus;
+  verificationStatus?: StoreVerificationStatus;
 
   @ApiProperty({ description: "The Store Owner's ID", type: Number })
   @IsNumber()
