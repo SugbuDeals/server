@@ -16,9 +16,8 @@ export class UpdateStoreDTO {
   @IsOptional()
   verificationStatus: StoreVerificationStatus;
 
-  @ApiPropertyOptional({ description: "The Store Owner's ID", type: Number })
-  @IsOptional()
+  @ApiProperty({ description: "The Store Owner's ID", type: Number })
   @IsNumber()
   @Type(() => Number)
-  ownerId?: number;
+  userId?: number;
 }
