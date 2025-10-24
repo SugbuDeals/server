@@ -7,7 +7,10 @@ export class CreateProductDTO {
   @IsString()
   name: string;
 
-  @ApiProperty({ example: 'Newest model with A17 chip', description: 'Product description' })
+  @ApiProperty({
+    example: 'Newest model with A17 chip',
+    description: 'Product description',
+  })
   @IsString()
   description: string;
 
@@ -21,12 +24,16 @@ export class CreateProductDTO {
   @Type(() => Number)
   stock: number;
 
-  @ApiProperty({ example: true, required: false, description: 'Whether product is active' })
+  @ApiProperty({
+    example: true,
+    required: false,
+    description: 'Whether product is active',
+  })
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
 
-  @ApiProperty({ example: 1, description: 'Related store id', type: Number })
+  @ApiProperty({ description: 'Related store id', type: Number })
   @IsNumber()
   @Type(() => Number)
   storeId: number;
