@@ -135,9 +135,22 @@ export class StoreController {
     @Param('id') id: string,
     @Body() updateStoreDTO: UpdateStoreDTO,
   ) {
+    const { name, description, verificationStatus, ownerId } = updateStoreDTO;
+
     return this.storeService.update({
       where: { id: Number(id) },
-      data: updateStoreDTO,
+      data: {
+        name,
+        description,
+        verificationStatus,
+        owner: ownerId
+          ? {
+              connect: {
+                id: ownerId,
+              },
+            }
+          : undefined,
+      },
     });
   }
 
