@@ -104,6 +104,19 @@ export class StoreController {
     return this.storeService.store({ where: { id: Number(id) } });
   }
 
+  @Get('nearby')
+  findNearby(
+    @Query('latitude') latitude: string,
+    @Query('longitude') longitude: string,
+    @Query('radius') radius?: string,
+  ) {
+    return this.storeService.findNearby(
+      parseFloat(latitude),
+      parseFloat(longitude),
+      radius ? parseFloat(radius) : 10,
+    );
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')

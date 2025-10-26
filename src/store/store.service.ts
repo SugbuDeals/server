@@ -43,7 +43,7 @@ export class StoreService {
     return this.prisma.store.findMany({ skip, take, cursor, where, orderBy });
   }
 
-  async nearbyStores(
+  async findNearby(
     latitude: number,
     longitude: number,
     radiusKm: number = 10,
