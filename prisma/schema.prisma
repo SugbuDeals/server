@@ -35,9 +35,20 @@ model Store {
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
   ownerId            Int
 
+  // location
+  latitude   Float?
+  longitude  Float?
+  address    String?
+  city       String?
+  state      String?
+  country    String?
+  postalCode String?
+
   owner     User            @relation(fields: [ownerId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   products  Product[]
   bookmarks StoreBookmark[]
+
+  @@index([latitude, longitude])
 }
 
 enum StoreVerificationStatus {
