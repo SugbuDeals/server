@@ -43,6 +43,30 @@ export class StoreService {
     return this.prisma.store.findMany({ skip, take, cursor, where, orderBy });
   }
 
+  async nearbyStores(
+    latitude: number,
+    longitude: number,
+    radiusKm: number = 10,
+  ) {
+    // Haversine formula approximation for nearby stores
+    const stores = await this.prisma.$queryRaw`
+      SELECT *, 
+        ( 6371 * acos( cos( radians(${latitude}) ) 
+        * cos( radians( latitude ) ) 
+        * cos( radians( longitude ) - radians(${longitude}) ) 
+        + sin( radians(${latitude}) ) 
+        * sin( radians( latitude ) ) ) ) AS distance 
+      FROM "Store" 
+      WHERE latitude IS NOT NULL 
+        AND longitude IS NOT NULL
+      HAVING distance < ${radiusKm}
+      ORDER BY distance
+      LIMIT 50
+    `;
+
+    return stores;
+  }
+
   /**
    * Creates a new store in the database.
    * @param params.data - The data for creating the store
