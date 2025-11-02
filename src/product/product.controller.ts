@@ -68,15 +68,11 @@ export class ProductController {
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
-    const { name, description, price, stock, isActive, storeId } =
+    const { storeId, ...body } =
       createProductDto;
 
     return this.productService.createProduct({
-      name,
-      description,
-      price,
-      stock,
-      isActive,
+      ...body,
       store: {
         connect: { id: storeId },
       },
