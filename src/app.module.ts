@@ -8,6 +8,7 @@ import { AiModule } from './ai/ai.module';
 import { PromotionModule } from './promotion/promotion.module';
 import { CategoryModule } from './category/category.module';
 import { BookmarkModule } from './bookmark/bookmark.module';
+import { FileModule } from './file/file.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { BookmarkModule } from './bookmark/bookmark.module';
     CategoryModule,
     BookmarkModule,
     AiModule,
+    FileModule,
   ],
 })
 export class AppModule {}
