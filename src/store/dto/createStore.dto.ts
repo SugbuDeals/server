@@ -106,4 +106,13 @@ export class CreateStoreDTO {
   @IsNumber()
   @Type(() => Number)
   ownerId?: number;
+
+  @ApiProperty({
+    example: 'http://localhost:3000/files/file-1762098832774-779762879.webp',
+    description: 'The url of the file',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
