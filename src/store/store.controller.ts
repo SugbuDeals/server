@@ -155,11 +155,11 @@ export class StoreController {
   @ApiOperation({ summary: 'Create a store' })
   @ApiBody({ type: CreateStoreDTO })
   async createStore(@Body() createStoreDTO: CreateStoreDTO) {
-    const { ownerId, ...body } = createStoreDTO;
+    const { ownerId, ...storeParams } = createStoreDTO;
 
     return this.storeService.create({
       data: {
-        ...body,
+        ...storeParams,
         owner: {
           connect: {
             id: ownerId,
@@ -179,14 +179,12 @@ export class StoreController {
     @Param('id') id: string,
     @Body() updateStoreDTO: UpdateStoreDTO,
   ) {
-    const { name, description, verificationStatus, ownerId } = updateStoreDTO;
+    const { ownerId, ...storeParams } = updateStoreDTO;
 
     return this.storeService.update({
       where: { id: Number(id) },
       data: {
-        name,
-        description,
-        verificationStatus,
+        ...storeParams,
         owner: ownerId
           ? {
               connect: {
