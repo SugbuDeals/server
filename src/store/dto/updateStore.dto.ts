@@ -7,7 +7,7 @@ import {
   Min,
 } from 'class-validator';
 import { StoreVerificationStatus } from 'generated/prisma';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class UpdateStoreDTO {
@@ -107,4 +107,13 @@ export class UpdateStoreDTO {
   @IsNumber()
   @Type(() => Number)
   ownerId?: number;
+
+  @ApiPropertyOptional({
+    example: 'http://localhost:3000/files/file-1762098832774-779762879.webp',
+    description: 'The url of the file',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
