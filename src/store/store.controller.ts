@@ -94,17 +94,39 @@ export class StoreController {
     });
   }
 
-  @Get(':id')
+  @Get('nearby')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Get store by id' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Returns a store' })
-  async findUniqueStore(@Param('id') id: string) {
-    return this.storeService.store({ where: { id: Number(id) } });
-  }
-
-  @Get('nearby')
+  @ApiOperation({
+    summary: 'Find stores near a location',
+    description:
+      'Returns stores within a specified radius of the given coordinates, sorted by distance. Uses the Haversine formula to calculate distances in kilometers.',
+  })
+  @ApiQuery({
+    name: 'latitude',
+    required: true,
+    type: Number,
+    description: 'Latitude of the search center point',
+    example: 10.3157,
+  })
+  @ApiQuery({
+    name: 'longitude',
+    required: true,
+    type: Number,
+    description: 'Longitude of the search center point',
+    example: 123.8854,
+  })
+  @ApiQuery({
+    name: 'radius',
+    required: false,
+    type: Number,
+    description: 'Search radius in kilometers (default: 10km, max: 50 results)',
+    example: 5,
+  })
+  @ApiOkResponse({
+    description:
+      'Returns array of stores with calculated distance field, ordered by proximity',
+  })
   findNearby(
     @Query('latitude') latitude: string,
     @Query('longitude') longitude: string,
@@ -115,6 +137,16 @@ export class StoreController {
       parseFloat(longitude),
       radius ? parseFloat(radius) : 10,
     );
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Get store by id' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiOkResponse({ description: 'Returns a store' })
+  async findUniqueStore(@Param('id') id: string) {
+    return this.storeService.store({ where: { id: Number(id) } });
   }
 
   @Post()
