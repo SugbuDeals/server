@@ -109,10 +109,19 @@ export class CreateStoreDTO {
 
   @ApiProperty({
     example: 'http://localhost:3000/files/file-1762098832774-779762879.webp',
-    description: 'The url of the file',
+    description: 'The url of the store image',
     required: false,
   })
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @ApiProperty({
+    example: 'http://localhost:3000/files/file-1762098832774-779762879.webp',
+    description: 'The url of the banner image',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  bannerUrl?: string;
 }
