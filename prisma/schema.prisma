@@ -36,6 +36,7 @@ model Store {
   verificationStatus StoreVerificationStatus @default(UNVERIFIED)
   ownerId            Int
   imageUrl           String?
+  bannerUrl          String?
 
   // location
   latitude   Float?
