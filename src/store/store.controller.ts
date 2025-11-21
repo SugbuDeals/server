@@ -8,6 +8,8 @@ import {
   Patch,
   Post,
   Query,
+  Request,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,7 +25,9 @@ import { StoreService } from './store.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateStoreDTO } from './dto/createStore.dto';
 import { UpdateStoreDTO } from './dto/updateStore.dto';
-import { Prisma } from 'generated/prisma';
+import { ManageStoreStatusDTO } from './dto/manageStoreStatus.dto';
+import { Prisma, UserRole } from 'generated/prisma';
+import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 @ApiTags('Stores')
 @Controller('store')
@@ -193,6 +197,53 @@ export class StoreController {
             }
           : undefined,
       },
+    });
+  }
+
+  @Patch(':id/admin-status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: manage store verification / active status' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: ManageStoreStatusDTO })
+  @ApiOkResponse({ description: 'Store status updated' })
+  async updateStoreAdminStatus(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id') id: string,
+    @Body() manageStoreStatusDTO: ManageStoreStatusDTO,
+  ) {
+    const requestingUser = req.user;
+    const storeId = Number(id);
+
+    if (!storeId || Number.isNaN(storeId)) {
+      throw new BadRequestException('Invalid store id');
+    }
+
+    if (requestingUser.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException(
+        'Only admins can manage store verification or status',
+      );
+    }
+
+    const data: Prisma.StoreUpdateInput = {};
+
+    if (manageStoreStatusDTO.verificationStatus) {
+      data.verificationStatus = manageStoreStatusDTO.verificationStatus;
+    }
+
+    if (typeof manageStoreStatusDTO.isActive === 'boolean') {
+      data.isActive = manageStoreStatusDTO.isActive;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException(
+        'Provide verificationStatus or isActive to update',
+      );
+    }
+
+    return this.storeService.update({
+      where: { id: storeId },
+      data,
     });
   }
 

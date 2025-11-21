@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,6 +9,8 @@ import {
   Post,
   UseGuards,
   Query,
+  Request,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -22,7 +25,9 @@ import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
 import { UpdateProductDTO } from './dto/updateProduct.dto';
-import { Prisma } from 'generated/prisma';
+import { UpdateProductStatusDTO } from './dto/updateProductStatus.dto';
+import { Prisma, UserRole } from 'generated/prisma';
+import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 @ApiTags('Products')
 @Controller('product')
@@ -109,6 +114,37 @@ export class ProductController {
     return this.productService.updateProduct({
       where: { id: Number(id) },
       data,
+    });
+  }
+
+  @Patch(':id/admin-status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: enable or disable a product' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdateProductStatusDTO })
+  @ApiOkResponse({ description: 'Product status updated' })
+  async updateProductAdminStatus(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id') id: string,
+    @Body() updateProductStatusDto: UpdateProductStatusDTO,
+  ) {
+    const requestingUser = req.user;
+    const productId = Number(id);
+
+    if (!productId || Number.isNaN(productId)) {
+      throw new BadRequestException('Invalid product id');
+    }
+
+    if (requestingUser.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('Only admins can disable products');
+    }
+
+    return this.productService.updateProduct({
+      where: { id: productId },
+      data: {
+        isActive: updateProductStatusDto.isActive,
+      },
     });
   }
 
