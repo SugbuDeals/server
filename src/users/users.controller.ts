@@ -10,6 +10,7 @@ import {
   Patch,
   Body,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,7 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { User, UserRole } from 'generated/prisma';
+import { Prisma, User, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { UpdateUserDTO } from './dto/updateUser.dto';
 
@@ -31,6 +32,7 @@ import { UpdateUserDTO } from './dto/updateUser.dto';
 @Controller('user')
 export class UserController {
   constructor(private userService: UsersService) {}
+  private readonly logger = new Logger(UserController.name);
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
@@ -145,7 +147,7 @@ export class UserController {
       );
     }
 
-    const data: any = {};
+    const data: Prisma.UserUpdateInput = {};
     if (typeof body.name === 'string') data.name = body.name;
     if (typeof body.email === 'string') data.email = body.email;
     if (
@@ -153,6 +155,13 @@ export class UserController {
       requestingUser.role === UserRole.ADMIN
     ) {
       data.role = body.role;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'imageUrl')) {
+      if (typeof body.imageUrl === 'string') {
+        data.imageUrl = body.imageUrl;
+      } else if (body.imageUrl === null) {
+        data.imageUrl = null;
+      }
     }
 
     return this.userService.update({ where: { id: userId }, data });
