@@ -214,7 +214,7 @@ export class SubscriptionController {
   async createSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() createSubscriptionDTO: CreateSubscriptionDTO,
-  ): Promise<UserSubscription> {
+  ): Promise<Subscription> {
     const requestingUser = req.user;
     if (requestingUser.role !== UserRole.ADMIN) {
       throw new UnauthorizedException(
@@ -259,7 +259,7 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
     @Body() updateSubscriptionDTO: UpdateSubscriptionDTO,
-  ): Promise<UserSubscription> {
+  ): Promise<Subscription> {
     const requestingUser = req.user;
     const subscriptionId = Number(id);
 
@@ -396,7 +396,7 @@ export class SubscriptionController {
   async updateRetailerSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() updateRetailerSubscriptionDTO: UpdateRetailerSubscriptionDTO,
-  ): Promise<Subscription> {
+  ): Promise<UserSubscription> {
     const requestingUser = req.user;
 
     // Only retailers can update their subscriptions
@@ -429,7 +429,7 @@ export class SubscriptionController {
   @ApiBadRequestResponse({ description: 'No active subscription found' })
   async cancelRetailerSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
-  ): Promise<Subscription> {
+  ): Promise<UserSubscription> {
     const requestingUser = req.user;
 
     // Only retailers can cancel their subscriptions
