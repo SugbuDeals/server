@@ -29,6 +29,7 @@ import { CreateSubscriptionDTO } from './dto/create-subscription.dto';
 import { UpdateSubscriptionDTO } from './dto/update-subscription.dto';
 import { JoinSubscriptionDTO } from './dto/join-subscription.dto';
 import { UpdateRetailerSubscriptionDTO } from './dto/update-retailer-subscription.dto';
+import { SubscriptionAnalyticsDTO } from './dto/subscription-analytics.dto';
 import { Subscription, SubscriptionStatus, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
@@ -439,6 +440,34 @@ export class SubscriptionController {
     return this.subscriptionService.cancelRetailerSubscription(
       requestingUser.sub,
     );
+  }
+
+  @Get('admin/analytics')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get subscription analytics (Admin only)',
+    description:
+      'Returns comprehensive subscription analytics including counts by status, plan, billing cycle, revenue metrics, and trends.',
+  })
+  @ApiOkResponse({
+    description: 'Returns subscription analytics',
+    type: SubscriptionAnalyticsDTO,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized or not an admin' })
+  async getAnalytics(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+  ): Promise<SubscriptionAnalyticsDTO> {
+    const requestingUser = req.user;
+
+    // Only admins can access analytics
+    if (requestingUser.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException(
+        'Only admins can access subscription analytics',
+      );
+    }
+
+    return this.subscriptionService.getAnalytics();
   }
 }
 

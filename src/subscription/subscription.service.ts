@@ -1,6 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, Subscription, SubscriptionStatus } from 'generated/prisma';
+import {
+  Prisma,
+  Subscription,
+  SubscriptionStatus,
+  SubscriptionPlan,
+  BillingCycle,
+} from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
+import {
+  SubscriptionAnalyticsDTO,
+  SubscriptionCountByPlan,
+  SubscriptionCountByStatus,
+  SubscriptionCountByBillingCycle,
+} from './dto/subscription-analytics.dto';
 
 /**
  * Service responsible for handling subscription-related operations.
@@ -235,6 +247,103 @@ export class SubscriptionService {
         cancelledAt: new Date(),
       },
     });
+  }
+
+  /**
+   * Gets subscription analytics for admin dashboard.
+   * @returns Promise resolving to subscription analytics data
+   */
+  async getAnalytics(): Promise<SubscriptionAnalyticsDTO> {
+    // Get all subscriptions
+    const allSubscriptions = await this.prisma.subscription.findMany({
+      include: { user: true },
+    });
+
+    const total = allSubscriptions.length;
+
+    // Count by status
+    const active = allSubscriptions.filter(
+      (s) => s.status === SubscriptionStatus.ACTIVE,
+    ).length;
+    const cancelled = allSubscriptions.filter(
+      (s) => s.status === SubscriptionStatus.CANCELLED,
+    ).length;
+    const expired = allSubscriptions.filter(
+      (s) => s.status === SubscriptionStatus.EXPIRED,
+    ).length;
+    const pending = allSubscriptions.filter(
+      (s) => s.status === SubscriptionStatus.PENDING,
+    ).length;
+
+    // Count by plan
+    const byPlan: SubscriptionCountByPlan[] = Object.values(
+      SubscriptionPlan,
+    ).map((plan) => ({
+      plan,
+      count: allSubscriptions.filter((s) => s.plan === plan).length,
+    }));
+
+    // Count by status
+    const byStatus: SubscriptionCountByStatus[] = Object.values(
+      SubscriptionStatus,
+    ).map((status) => ({
+      status,
+      count: allSubscriptions.filter((s) => s.status === status).length,
+    }));
+
+    // Count by billing cycle
+    const byBillingCycle: SubscriptionCountByBillingCycle[] = Object.values(
+      BillingCycle,
+    ).map((billingCycle) => ({
+      billingCycle,
+      count: allSubscriptions.filter((s) => s.billingCycle === billingCycle)
+        .length,
+    }));
+
+    // Calculate revenue (sum of active subscription prices)
+    const activeSubscriptions = allSubscriptions.filter(
+      (s) => s.status === SubscriptionStatus.ACTIVE,
+    );
+    const totalRevenue = activeSubscriptions.reduce(
+      (sum, sub) => sum + Number(sub.price),
+      0,
+    );
+
+    // Calculate average price
+    const averagePrice =
+      allSubscriptions.length > 0
+        ? allSubscriptions.reduce((sum, sub) => sum + Number(sub.price), 0) /
+          allSubscriptions.length
+        : 0;
+
+    // Recent subscriptions (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentSubscriptions = allSubscriptions.filter(
+      (s) => s.createdAt >= thirtyDaysAgo,
+    ).length;
+
+    // Subscriptions this month
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const subscriptionsThisMonth = allSubscriptions.filter(
+      (s) => s.createdAt >= startOfMonth,
+    ).length;
+
+    return {
+      total,
+      active,
+      cancelled,
+      expired,
+      pending,
+      byPlan,
+      byStatus,
+      byBillingCycle,
+      totalRevenue: totalRevenue.toFixed(2),
+      averagePrice: averagePrice.toFixed(2),
+      recentSubscriptions,
+      subscriptionsThisMonth,
+    };
   }
 }
 
