@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   Prisma,
   Subscription,
+  UserSubscription,
   SubscriptionStatus,
   SubscriptionPlan,
   BillingCycle,
@@ -23,9 +24,7 @@ export class SubscriptionService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Retrieves a single subscription by its unique identifier.
-   * @param params.where - Unique identifier criteria to find the subscription
-   * @returns Promise resolving to the found subscription or null if not found
+   * Retrieves an admin-defined subscription plan by its unique identifier.
    */
   async subscription(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
@@ -36,15 +35,7 @@ export class SubscriptionService {
   }
 
   /**
-   * Retrieves multiple subscriptions based on provided criteria.
-   * @param params - Query parameters for finding subscriptions
-   * @param params.skip - Number of records to skip
-   * @param params.take - Number of records to take
-   * @param params.cursor - Cursor for pagination
-   * @param params.where - Filter conditions
-   * @param params.orderBy - Sorting criteria
-   * @param params.include - Relations to include
-   * @returns Promise resolving to an array of subscriptions
+   * Retrieves multiple subscription plans.
    */
   async subscriptions(params: {
     skip?: number;
@@ -66,28 +57,9 @@ export class SubscriptionService {
   }
 
   /**
-   * Gets the active subscription for a user.
-   * @param userId - The user ID to get the active subscription for
-   * @returns Promise resolving to the active subscription or null if not found
+   * Creates a new subscription plan.
    */
-  async getActiveSubscription(userId: number): Promise<Subscription | null> {
-    return this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  /**
-   * Creates a new subscription in the database.
-   * @param params.data - The data for creating the subscription
-   * @returns Promise resolving to the newly created subscription
-   */
-  async create(params: {
+  async createPlan(params: {
     data: Prisma.SubscriptionCreateInput;
   }): Promise<Subscription> {
     const { data } = params;
@@ -95,13 +67,9 @@ export class SubscriptionService {
   }
 
   /**
-   * Updates an existing subscription in the database.
-   * @param params.where - Unique identifier of the subscription to update
-   * @param params.data - The data to update the subscription with
-   * @returns Promise resolving to the updated subscription
-   * @throws {PrismaClientKnownRequestError} If the subscription is not found
+   * Updates an existing subscription plan.
    */
-  async update(params: {
+  async updatePlan(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
     data: Prisma.SubscriptionUpdateInput;
     include?: Prisma.SubscriptionInclude;
@@ -111,16 +79,66 @@ export class SubscriptionService {
   }
 
   /**
-   * Deletes a subscription from the database.
-   * @param params.where - Unique identifier of the subscription to delete
-   * @returns Promise resolving to the deleted subscription
-   * @throws {PrismaClientKnownRequestError} If the subscription is not found
+   * Deletes a subscription plan.
    */
-  async delete(params: {
+  async deletePlan(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
   }): Promise<Subscription> {
     const { where } = params;
     return this.prisma.subscription.delete({ where });
+  }
+
+  /**
+   * Retrieves a single user subscription record.
+   */
+  async userSubscription(params: {
+    where: Prisma.UserSubscriptionWhereUniqueInput;
+    include?: Prisma.UserSubscriptionInclude;
+  }): Promise<UserSubscription | null> {
+    const { where, include } = params;
+    return this.prisma.userSubscription.findUnique({ where, include });
+  }
+
+  /**
+   * Retrieves user subscription records.
+   */
+  async userSubscriptions(params: {
+    skip?: number;
+    take?: number;
+    cursor?: Prisma.UserSubscriptionWhereUniqueInput;
+    where?: Prisma.UserSubscriptionWhereInput;
+    orderBy?: Prisma.UserSubscriptionOrderByWithRelationInput;
+    include?: Prisma.UserSubscriptionInclude;
+  }): Promise<UserSubscription[]> {
+    const { skip, take, cursor, where, orderBy, include } = params;
+    return this.prisma.userSubscription.findMany({
+      skip,
+      take,
+      cursor,
+      where,
+      orderBy,
+      include,
+    });
+  }
+
+  /**
+   * Gets the active user subscription for a retailer.
+   */
+  async getActiveUserSubscription(
+    userId: number,
+  ): Promise<UserSubscription | null> {
+    return this.prisma.userSubscription.findFirst({
+      where: {
+        userId,
+        status: SubscriptionStatus.ACTIVE,
+      },
+      include: {
+        subscription: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
   }
 
   /**
@@ -134,20 +152,19 @@ export class SubscriptionService {
   async joinSubscription(
     userId: number,
     subscriptionId: number,
-  ): Promise<Subscription> {
-    // Find the subscription template to copy from
+  ): Promise<UserSubscription> {
     const templateSubscription = await this.subscription({
       where: { id: subscriptionId },
     });
 
-    if (!templateSubscription) {
-      throw new BadRequestException('Subscription not found');
+    if (!templateSubscription || !templateSubscription.isActive) {
+      throw new BadRequestException('Subscription not available');
     }
 
-    // Cancel any existing active subscription
-    const activeSubscription = await this.getActiveSubscription(userId);
+    // Ensure retailers only have a single active subscription
+    const activeSubscription = await this.getActiveUserSubscription(userId);
     if (activeSubscription) {
-      await this.update({
+      await this.prisma.userSubscription.update({
         where: { id: activeSubscription.id },
         data: {
           status: SubscriptionStatus.CANCELLED,
@@ -156,20 +173,22 @@ export class SubscriptionService {
       });
     }
 
-    // Create new subscription based on template with ACTIVE status
-    return this.prisma.subscription.create({
+    return this.prisma.userSubscription.create({
       data: {
-        plan: templateSubscription.plan,
-        billingCycle: templateSubscription.billingCycle,
         price: templateSubscription.price,
+        billingCycle: templateSubscription.billingCycle,
         status: SubscriptionStatus.ACTIVE,
         startsAt: new Date(),
         endsAt: templateSubscription.endsAt,
         user: {
-          connect: {
-            id: userId,
-          },
+          connect: { id: userId },
         },
+        subscription: {
+          connect: { id: subscriptionId },
+        },
+      },
+      include: {
+        subscription: true,
       },
     });
   }
@@ -184,24 +203,23 @@ export class SubscriptionService {
   async updateRetailerSubscription(
     userId: number,
     subscriptionId: number,
-  ): Promise<Subscription> {
-    // Find the subscription template to copy from
+  ): Promise<UserSubscription> {
     const templateSubscription = await this.subscription({
       where: { id: subscriptionId },
     });
 
-    if (!templateSubscription) {
-      throw new BadRequestException('Subscription not found');
+    if (!templateSubscription || !templateSubscription.isActive) {
+      throw new BadRequestException('Subscription not available');
     }
 
-    // Cancel current active subscription
-    const activeSubscription = await this.getActiveSubscription(userId);
+    const activeSubscription = await this.getActiveUserSubscription(userId);
 
     if (!activeSubscription) {
       throw new BadRequestException('No active subscription found');
     }
 
-    await this.update({
+    // Cancel current subscription history and create a new record
+    await this.prisma.userSubscription.update({
       where: { id: activeSubscription.id },
       data: {
         status: SubscriptionStatus.CANCELLED,
@@ -209,20 +227,22 @@ export class SubscriptionService {
       },
     });
 
-    // Create new subscription based on template with ACTIVE status
-    return this.prisma.subscription.create({
+    return this.prisma.userSubscription.create({
       data: {
-        plan: templateSubscription.plan,
-        billingCycle: templateSubscription.billingCycle,
         price: templateSubscription.price,
+        billingCycle: templateSubscription.billingCycle,
         status: SubscriptionStatus.ACTIVE,
         startsAt: new Date(),
         endsAt: templateSubscription.endsAt,
         user: {
-          connect: {
-            id: userId,
-          },
+          connect: { id: userId },
         },
+        subscription: {
+          connect: { id: subscriptionId },
+        },
+      },
+      include: {
+        subscription: true,
       },
     });
   }
@@ -233,18 +253,21 @@ export class SubscriptionService {
    * @returns Promise resolving to the cancelled subscription
    * @throws {BadRequestException} If no active subscription exists
    */
-  async cancelRetailerSubscription(userId: number): Promise<Subscription> {
-    const activeSubscription = await this.getActiveSubscription(userId);
+  async cancelRetailerSubscription(userId: number): Promise<UserSubscription> {
+    const activeSubscription = await this.getActiveUserSubscription(userId);
 
     if (!activeSubscription) {
       throw new BadRequestException('No active subscription found');
     }
 
-    return this.update({
+    return this.prisma.userSubscription.update({
       where: { id: activeSubscription.id },
       data: {
         status: SubscriptionStatus.CANCELLED,
         cancelledAt: new Date(),
+      },
+      include: {
+        subscription: true,
       },
     });
   }
@@ -254,54 +277,52 @@ export class SubscriptionService {
    * @returns Promise resolving to subscription analytics data
    */
   async getAnalytics(): Promise<SubscriptionAnalyticsDTO> {
-    // Get all subscriptions
-    const allSubscriptions = await this.prisma.subscription.findMany({
-      include: { user: true },
+    const userSubscriptions = await this.prisma.userSubscription.findMany({
+      include: {
+        subscription: true,
+      },
     });
 
-    const total = allSubscriptions.length;
-
-    // Count by status
-    const active = allSubscriptions.filter(
+    const total = userSubscriptions.length;
+    const active = userSubscriptions.filter(
       (s) => s.status === SubscriptionStatus.ACTIVE,
     ).length;
-    const cancelled = allSubscriptions.filter(
+    const cancelled = userSubscriptions.filter(
       (s) => s.status === SubscriptionStatus.CANCELLED,
     ).length;
-    const expired = allSubscriptions.filter(
+    const expired = userSubscriptions.filter(
       (s) => s.status === SubscriptionStatus.EXPIRED,
     ).length;
-    const pending = allSubscriptions.filter(
+    const pending = userSubscriptions.filter(
       (s) => s.status === SubscriptionStatus.PENDING,
     ).length;
 
-    // Count by plan
     const byPlan: SubscriptionCountByPlan[] = Object.values(
       SubscriptionPlan,
     ).map((plan) => ({
       plan,
-      count: allSubscriptions.filter((s) => s.plan === plan).length,
+      count: userSubscriptions.filter(
+        (s) => s.subscription?.plan === plan,
+      ).length,
     }));
 
-    // Count by status
     const byStatus: SubscriptionCountByStatus[] = Object.values(
       SubscriptionStatus,
     ).map((status) => ({
       status,
-      count: allSubscriptions.filter((s) => s.status === status).length,
+      count: userSubscriptions.filter((s) => s.status === status).length,
     }));
 
-    // Count by billing cycle
     const byBillingCycle: SubscriptionCountByBillingCycle[] = Object.values(
       BillingCycle,
     ).map((billingCycle) => ({
       billingCycle,
-      count: allSubscriptions.filter((s) => s.billingCycle === billingCycle)
-        .length,
+      count: userSubscriptions.filter(
+        (s) => s.billingCycle === billingCycle,
+      ).length,
     }));
 
-    // Calculate revenue (sum of active subscription prices)
-    const activeSubscriptions = allSubscriptions.filter(
+    const activeSubscriptions = userSubscriptions.filter(
       (s) => s.status === SubscriptionStatus.ACTIVE,
     );
     const totalRevenue = activeSubscriptions.reduce(
@@ -309,24 +330,23 @@ export class SubscriptionService {
       0,
     );
 
-    // Calculate average price
     const averagePrice =
-      allSubscriptions.length > 0
-        ? allSubscriptions.reduce((sum, sub) => sum + Number(sub.price), 0) /
-          allSubscriptions.length
+      userSubscriptions.length > 0
+        ? userSubscriptions.reduce(
+            (sum, sub) => sum + Number(sub.price),
+            0,
+          ) / userSubscriptions.length
         : 0;
 
-    // Recent subscriptions (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentSubscriptions = allSubscriptions.filter(
+    const recentSubscriptions = userSubscriptions.filter(
       (s) => s.createdAt >= thirtyDaysAgo,
     ).length;
 
-    // Subscriptions this month
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const subscriptionsThisMonth = allSubscriptions.filter(
+    const subscriptionsThisMonth = userSubscriptions.filter(
       (s) => s.createdAt >= startOfMonth,
     ).length;
 
