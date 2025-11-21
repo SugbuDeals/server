@@ -22,6 +22,7 @@ import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
 import { UpdateProductDTO } from './dto/updateProduct.dto';
+import { Prisma } from 'generated/prisma';
 
 @ApiTags('Products')
 @Controller('product')
@@ -68,14 +69,19 @@ export class ProductController {
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
   async createProduct(@Body() createProductDto: CreateProductDTO) {
-    const { storeId, ...body } =
-      createProductDto;
+    const { storeId, categoryId, ...body } = createProductDto;
 
     return this.productService.createProduct({
       ...body,
       store: {
         connect: { id: storeId },
       },
+      category:
+        typeof categoryId === 'number'
+          ? {
+              connect: { id: categoryId },
+            }
+          : undefined,
     });
   }
 
@@ -89,9 +95,20 @@ export class ProductController {
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDTO,
   ) {
+    const { categoryId, ...rest } = updateProductDto;
+    const data: Prisma.ProductUpdateInput = {
+      ...rest,
+    };
+
+    if (typeof categoryId === 'number') {
+      data.category = {
+        connect: { id: categoryId },
+      };
+    }
+
     return this.productService.updateProduct({
       where: { id: Number(id) },
-      data: updateProductDto,
+      data,
     });
   }
 

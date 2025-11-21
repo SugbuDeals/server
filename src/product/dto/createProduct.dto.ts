@@ -1,6 +1,6 @@
 import { IsString, IsNumber, IsBoolean, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductDTO {
   @ApiProperty({ example: 'Apple iPhone 15', description: 'Product name' })
@@ -46,4 +46,14 @@ export class CreateProductDTO {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Category id to assign the product to',
+    type: Number,
+    example: 5,
+  })
+  @IsNumber()
+  @Type(() => Number)
+  @IsOptional()
+  categoryId?: number;
 }
