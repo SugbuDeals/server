@@ -5,6 +5,7 @@ import {
   IsString,
   Max,
   Min,
+  IsBoolean,
 } from 'class-validator';
 import { StoreVerificationStatus } from 'generated/prisma';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -125,4 +126,12 @@ export class UpdateStoreDTO {
   @IsOptional()
   @IsString()
   bannerUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether the store is active and visible',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
