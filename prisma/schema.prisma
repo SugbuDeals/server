@@ -17,10 +17,10 @@ model User {
   role      UserRole @default(CONSUMER)
   imageUrl  String?
 
-  Store           Store[]
-  StoreBookmark   StoreBookmark[]
-  ProductBookmark ProductBookmark[]
-  subscriptions   Subscription[]
+  Store             Store[]
+  StoreBookmark     StoreBookmark[]
+  ProductBookmark   ProductBookmark[]
+  subscriptions     UserSubscription[]
 }
 
 enum UserRole {
@@ -126,22 +126,40 @@ model ProductBookmark {
 }
 
 model Subscription {
-  id           Int                @id @default(autoincrement())
-  userId       Int
-  plan         SubscriptionPlan   @default(FREE)
-  status       SubscriptionStatus @default(ACTIVE)
-  billingCycle BillingCycle       @default(MONTHLY)
-  price        Decimal            @default(0)
-  startsAt     DateTime           @default(now())
+  id           Int          @id @default(autoincrement())
+  name         String
+  description  String?
+  plan         SubscriptionPlan @default(FREE)
+  billingCycle BillingCycle @default(MONTHLY)
+  price        Decimal      @default(0)
+  benefits     String?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  startsAt     DateTime     @default(now())
   endsAt       DateTime?
-  cancelledAt  DateTime?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  userSubscriptions UserSubscription[]
+}
+
+model UserSubscription {
+  id              Int                @id @default(autoincrement())
+  userId          Int
+  subscriptionId  Int
+  status          SubscriptionStatus @default(ACTIVE)
+  price           Decimal            @default(0)
+  billingCycle    BillingCycle       @default(MONTHLY)
+  startsAt        DateTime           @default(now())
+  endsAt          DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@index([userId])
-  @@index([status])
+  @@index([subscriptionId])
   @@index([userId, status])
 }
 
