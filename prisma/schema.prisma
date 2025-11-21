@@ -20,6 +20,7 @@ model User {
   Store           Store[]
   StoreBookmark   StoreBookmark[]
   ProductBookmark ProductBookmark[]
+  subscriptions   Subscription[]
 }
 
 enum UserRole {
@@ -122,4 +123,42 @@ model ProductBookmark {
   product Product @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([userId, productId])
+}
+
+model Subscription {
+  id           Int                @id @default(autoincrement())
+  userId       Int
+  plan         SubscriptionPlan   @default(FREE)
+  status       SubscriptionStatus @default(ACTIVE)
+  billingCycle BillingCycle       @default(MONTHLY)
+  price        Decimal            @default(0)
+  startsAt     DateTime           @default(now())
+  endsAt       DateTime?
+  cancelledAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PENDING
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
 }
