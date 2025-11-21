@@ -38,6 +38,7 @@ model Store {
   ownerId            Int
   imageUrl           String?
   bannerUrl          String?
+  isActive           Boolean                 @default(true)
 
   // location
   latitude   Float?

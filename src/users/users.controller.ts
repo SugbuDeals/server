@@ -156,4 +156,39 @@ export class UserController {
 
     return this.userService.update({ where: { id: userId }, data });
   }
+
+  @Patch(':id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Admin: approve retailer account' })
+  @ApiParam({
+    name: 'id',
+    required: true,
+    description: 'User id',
+    type: Number,
+  })
+  @ApiOkResponse({ description: 'Retailer approved successfully' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  async approveRetailer(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id') id: string,
+  ): Promise<User> {
+    const adminUser = req.user;
+    const userId = Number(id);
+
+    if (!userId || Number.isNaN(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
+
+    if (adminUser.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException(
+        'Only admins can approve retailer accounts',
+      );
+    }
+
+    return this.userService.update({
+      where: { id: userId },
+      data: { role: UserRole.RETAILER },
+    });
+  }
 }
