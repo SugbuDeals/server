@@ -1,32 +1,38 @@
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsDecimal,
   IsDateString,
+  IsString,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  SubscriptionPlan,
-  SubscriptionStatus,
-  BillingCycle,
-} from 'generated/prisma';
+import { SubscriptionPlan, BillingCycle } from 'generated/prisma';
 
 export class UpdateSubscriptionDTO {
   @ApiPropertyOptional({
+    description: 'Display name of the subscription',
+    example: 'Premium Retailer Plus',
+  })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Short description of the subscription',
+    example: 'Adds concierge onboarding and analytics.',
+  })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({
     enum: SubscriptionPlan,
-    description: 'Subscription plan type',
+    description: 'Subscription plan category',
   })
   @IsEnum(SubscriptionPlan)
   @IsOptional()
   plan?: SubscriptionPlan;
-
-  @ApiPropertyOptional({
-    enum: SubscriptionStatus,
-    description: 'Subscription status',
-  })
-  @IsEnum(SubscriptionStatus)
-  @IsOptional()
-  status?: SubscriptionStatus;
 
   @ApiPropertyOptional({
     enum: BillingCycle,
@@ -38,7 +44,7 @@ export class UpdateSubscriptionDTO {
 
   @ApiPropertyOptional({
     description: 'Subscription price',
-    example: '9.99',
+    example: '19.99',
     type: String,
   })
   @IsDecimal()
@@ -46,27 +52,35 @@ export class UpdateSubscriptionDTO {
   price?: string;
 
   @ApiPropertyOptional({
-    description: 'Subscription start date',
-    example: '2024-01-01T00:00:00Z',
+    description: 'Additional benefits or perks description',
+    example: '• Dedicated success manager\n• Exclusive promotions',
+  })
+  @IsString()
+  @IsOptional()
+  benefits?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether this subscription is currently active',
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Subscription availability start date',
+    example: '2024-02-01T00:00:00Z',
   })
   @IsDateString()
   @IsOptional()
   startsAt?: string;
 
   @ApiPropertyOptional({
-    description: 'Subscription end date',
+    description: 'Subscription availability end date',
     example: '2024-12-31T23:59:59Z',
   })
   @IsDateString()
   @IsOptional()
   endsAt?: string;
-
-  @ApiPropertyOptional({
-    description: 'Subscription cancellation date',
-    example: '2024-06-01T00:00:00Z',
-  })
-  @IsDateString()
-  @IsOptional()
-  cancelledAt?: string;
 }
 

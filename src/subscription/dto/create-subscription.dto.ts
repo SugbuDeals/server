@@ -1,43 +1,40 @@
 import {
+  IsBoolean,
   IsEnum,
-  IsInt,
   IsOptional,
   IsDecimal,
   IsDateString,
+  IsString,
+  IsNotEmpty,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  SubscriptionPlan,
-  SubscriptionStatus,
-  BillingCycle,
-} from 'generated/prisma';
+import { SubscriptionPlan, BillingCycle } from 'generated/prisma';
 
 export class CreateSubscriptionDTO {
   @ApiProperty({
-    description: 'User ID to create subscription for',
-    example: 1,
-    type: Number,
+    description: 'Display name of the subscription',
+    example: 'Premium Retailer',
   })
-  @IsInt()
-  userId: number;
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiPropertyOptional({
+    description: 'Short description of the subscription',
+    example: 'Unlock all premium retailer features and support.',
+  })
+  @IsString()
+  @IsOptional()
+  description?: string;
 
   @ApiPropertyOptional({
     enum: SubscriptionPlan,
     default: SubscriptionPlan.FREE,
-    description: 'Subscription plan type',
+    description: 'Subscription plan category',
   })
   @IsEnum(SubscriptionPlan)
   @IsOptional()
   plan?: SubscriptionPlan;
-
-  @ApiPropertyOptional({
-    enum: SubscriptionStatus,
-    default: SubscriptionStatus.ACTIVE,
-    description: 'Subscription status',
-  })
-  @IsEnum(SubscriptionStatus)
-  @IsOptional()
-  status?: SubscriptionStatus;
 
   @ApiPropertyOptional({
     enum: BillingCycle,
@@ -58,7 +55,23 @@ export class CreateSubscriptionDTO {
   price?: string;
 
   @ApiPropertyOptional({
-    description: 'Subscription start date',
+    description: 'Additional benefits or perks description',
+    example: '• Unlimited listings\n• Featured placement\n• Priority support',
+  })
+  @IsString()
+  @IsOptional()
+  benefits?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether this subscription is currently available for retailers',
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Subscription availability start date',
     example: '2024-01-01T00:00:00Z',
   })
   @IsDateString()
@@ -66,7 +79,7 @@ export class CreateSubscriptionDTO {
   startsAt?: string;
 
   @ApiPropertyOptional({
-    description: 'Subscription end date',
+    description: 'Subscription availability end date',
     example: '2024-12-31T23:59:59Z',
   })
   @IsDateString()

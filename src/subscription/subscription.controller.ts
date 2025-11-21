@@ -30,7 +30,14 @@ import { UpdateSubscriptionDTO } from './dto/update-subscription.dto';
 import { JoinSubscriptionDTO } from './dto/join-subscription.dto';
 import { UpdateRetailerSubscriptionDTO } from './dto/update-retailer-subscription.dto';
 import { SubscriptionAnalyticsDTO } from './dto/subscription-analytics.dto';
-import { Subscription, SubscriptionStatus, UserRole } from 'generated/prisma';
+import {
+  Prisma,
+  Subscription,
+  SubscriptionStatus,
+  SubscriptionPlan,
+  UserRole,
+  UserSubscription,
+} from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 @ApiTags('Subscriptions')
@@ -41,18 +48,24 @@ export class SubscriptionController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'List subscriptions' })
+  @ApiOperation({ summary: 'List subscription plans' })
   @ApiQuery({
-    name: 'userId',
+    name: 'plan',
     required: false,
-    type: Number,
-    description: 'Filter by user ID',
+    enum: SubscriptionPlan,
+    description: 'Filter by subscription plan type',
   })
   @ApiQuery({
-    name: 'status',
+    name: 'isActive',
     required: false,
-    enum: SubscriptionStatus,
-    description: 'Filter by subscription status',
+    type: Boolean,
+    description: 'Filter by availability status (admin only)',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search by subscription name or description (admin only)',
   })
   @ApiQuery({
     name: 'skip',
@@ -66,38 +79,44 @@ export class SubscriptionController {
     type: Number,
     description: 'Number of records to take',
   })
-  @ApiOkResponse({ description: 'Returns list of subscriptions' })
+  @ApiOkResponse({ description: 'Returns list of subscription plans' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   async findManySubscriptions(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
-    @Query('userId') userId?: string,
-    @Query('status') status?: SubscriptionStatus,
+    @Query('plan') plan?: SubscriptionPlan,
+    @Query('isActive') isActive?: string,
+    @Query('search') search?: string,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ): Promise<Subscription[]> {
     const requestingUser = req.user;
     const skipNum = skip ? parseInt(skip, 10) : undefined;
     const takeNum = take ? parseInt(take, 10) : undefined;
-    const userIdNum = userId ? parseInt(userId, 10) : undefined;
 
-    // Validate pagination parameters
-    if (skipNum !== undefined && (isNaN(skipNum) || skipNum < 0)) {
+    if (skipNum !== undefined && (Number.isNaN(skipNum) || skipNum < 0)) {
       throw new BadRequestException('Skip must be a non-negative number');
     }
-    if (takeNum !== undefined && (isNaN(takeNum) || takeNum <= 0)) {
+    if (takeNum !== undefined && (Number.isNaN(takeNum) || takeNum <= 0)) {
       throw new BadRequestException('Take must be a positive number');
     }
 
-    // Non-admin users can only see their own subscriptions
-    const where: any = {};
-    if (requestingUser.role !== UserRole.ADMIN) {
-      where.userId = requestingUser.sub;
-    } else if (userIdNum) {
-      where.userId = userIdNum;
-    }
+    const where: Prisma.SubscriptionWhereInput = {};
 
-    if (status) {
-      where.status = status;
+    if (requestingUser.role !== UserRole.ADMIN) {
+      where.isActive = true;
+    } else {
+      if (typeof isActive === 'string') {
+        where.isActive = isActive === 'true';
+      }
+      if (plan) {
+        where.plan = plan;
+      }
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
     }
 
     return this.subscriptionService.subscriptions({
@@ -105,7 +124,6 @@ export class SubscriptionController {
       take: takeNum,
       where,
       orderBy: { createdAt: 'desc' },
-      include: { user: true },
     });
   }
 
@@ -119,12 +137,12 @@ export class SubscriptionController {
     description: 'User ID',
     type: Number,
   })
-  @ApiOkResponse({ description: 'Returns the active subscription' })
+  @ApiOkResponse({ description: 'Returns the active user subscription' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   async getActiveSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('userId') userId: string,
-  ): Promise<Subscription | null> {
+  ): Promise<UserSubscription | null> {
     const requestingUser = req.user;
     const userIdNum = Number(userId);
 
@@ -142,7 +160,7 @@ export class SubscriptionController {
       );
     }
 
-    return this.subscriptionService.getActiveSubscription(userIdNum);
+    return this.subscriptionService.getActiveUserSubscription(userIdNum);
   }
 
   @Get(':id')
@@ -170,18 +188,13 @@ export class SubscriptionController {
 
     const subscription = await this.subscriptionService.subscription({
       where: { id: subscriptionId },
-      include: { user: true },
     });
 
     if (!subscription) {
       return null;
     }
 
-    // Non-admin users can only see their own subscriptions
-    if (
-      requestingUser.role !== UserRole.ADMIN &&
-      subscription.userId !== requestingUser.sub
-    ) {
+    if (!subscription.isActive && requestingUser.role !== UserRole.ADMIN) {
       throw new UnauthorizedException(
         'You are not authorized to view this subscription',
       );
@@ -201,38 +214,31 @@ export class SubscriptionController {
   async createSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() createSubscriptionDTO: CreateSubscriptionDTO,
-  ): Promise<Subscription> {
+  ): Promise<UserSubscription> {
     const requestingUser = req.user;
-    const { userId, ...subscriptionParams } = createSubscriptionDTO;
-
-    // Non-admin users can only create subscriptions for themselves
-    if (
-      requestingUser.role !== UserRole.ADMIN &&
-      userId !== requestingUser.sub
-    ) {
+    if (requestingUser.role !== UserRole.ADMIN) {
       throw new UnauthorizedException(
-        'You are not authorized to create subscriptions for other users',
+        'Only admins can create subscription plans',
       );
     }
 
-    const data: any = {
-      ...subscriptionParams,
-      user: {
-        connect: {
-          id: userId,
-        },
-      },
+    const data: Prisma.SubscriptionCreateInput = {
+      name: createSubscriptionDTO.name,
+      description: createSubscriptionDTO.description,
+      plan: createSubscriptionDTO.plan,
+      billingCycle: createSubscriptionDTO.billingCycle,
+      price: createSubscriptionDTO.price ?? '0',
+      benefits: createSubscriptionDTO.benefits,
+      isActive: createSubscriptionDTO.isActive,
+      startsAt: createSubscriptionDTO.startsAt
+        ? new Date(createSubscriptionDTO.startsAt)
+        : undefined,
+      endsAt: createSubscriptionDTO.endsAt
+        ? new Date(createSubscriptionDTO.endsAt)
+        : undefined,
     };
 
-    // Convert date strings to Date objects if provided
-    if (subscriptionParams.startsAt) {
-      data.startsAt = new Date(subscriptionParams.startsAt);
-    }
-    if (subscriptionParams.endsAt) {
-      data.endsAt = new Date(subscriptionParams.endsAt);
-    }
-
-    return this.subscriptionService.create({ data });
+    return this.subscriptionService.createPlan({ data });
   }
 
   @Patch(':id')
@@ -253,7 +259,7 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
     @Body() updateSubscriptionDTO: UpdateSubscriptionDTO,
-  ): Promise<Subscription> {
+  ): Promise<UserSubscription> {
     const requestingUser = req.user;
     const subscriptionId = Number(id);
 
@@ -261,7 +267,6 @@ export class SubscriptionController {
       throw new BadRequestException('Invalid subscription ID');
     }
 
-    // Check if subscription exists and user has permission
     const existingSubscription = await this.subscriptionService.subscription({
       where: { id: subscriptionId },
     });
@@ -270,30 +275,29 @@ export class SubscriptionController {
       throw new BadRequestException('Subscription not found');
     }
 
-    // Non-admin users can only update their own subscriptions
-    if (
-      requestingUser.role !== UserRole.ADMIN &&
-      existingSubscription.userId !== requestingUser.sub
-    ) {
+    if (requestingUser.role !== UserRole.ADMIN) {
       throw new UnauthorizedException(
-        'You are not authorized to update this subscription',
+        'Only admins can update subscription plans',
       );
     }
 
-    const data: any = { ...updateSubscriptionDTO };
+    const data: Prisma.SubscriptionUpdateInput = {
+      name: updateSubscriptionDTO.name,
+      description: updateSubscriptionDTO.description,
+      plan: updateSubscriptionDTO.plan,
+      billingCycle: updateSubscriptionDTO.billingCycle,
+      price: updateSubscriptionDTO.price,
+      benefits: updateSubscriptionDTO.benefits,
+      isActive: updateSubscriptionDTO.isActive,
+      startsAt: updateSubscriptionDTO.startsAt
+        ? new Date(updateSubscriptionDTO.startsAt)
+        : undefined,
+      endsAt: updateSubscriptionDTO.endsAt
+        ? new Date(updateSubscriptionDTO.endsAt)
+        : undefined,
+    };
 
-    // Convert date strings to Date objects if provided
-    if (updateSubscriptionDTO.startsAt) {
-      data.startsAt = new Date(updateSubscriptionDTO.startsAt);
-    }
-    if (updateSubscriptionDTO.endsAt) {
-      data.endsAt = new Date(updateSubscriptionDTO.endsAt);
-    }
-    if (updateSubscriptionDTO.cancelledAt) {
-      data.cancelledAt = new Date(updateSubscriptionDTO.cancelledAt);
-    }
-
-    return this.subscriptionService.update({
+    return this.subscriptionService.updatePlan({
       where: { id: subscriptionId },
       data,
     });
@@ -331,17 +335,15 @@ export class SubscriptionController {
       throw new BadRequestException('Subscription not found');
     }
 
-    // Non-admin users can only delete their own subscriptions
-    if (
-      requestingUser.role !== UserRole.ADMIN &&
-      existingSubscription.userId !== requestingUser.sub
-    ) {
+    if (requestingUser.role !== UserRole.ADMIN) {
       throw new UnauthorizedException(
-        'You are not authorized to delete this subscription',
+        'Only admins can delete subscription plans',
       );
     }
 
-    return this.subscriptionService.delete({ where: { id: subscriptionId } });
+    return this.subscriptionService.deletePlan({
+      where: { id: subscriptionId },
+    });
   }
 
   @Post('retailer/join')
@@ -359,7 +361,7 @@ export class SubscriptionController {
   async joinSubscription(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() joinSubscriptionDTO: JoinSubscriptionDTO,
-  ): Promise<Subscription> {
+  ): Promise<UserSubscription> {
     const requestingUser = req.user;
 
     // Only retailers can join subscriptions
