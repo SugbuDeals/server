@@ -6,8 +6,9 @@ import {
   IsString,
   Max,
   Min,
+  IsBoolean,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateStoreDTO {
@@ -124,4 +125,12 @@ export class CreateStoreDTO {
   @IsOptional()
   @IsString()
   bannerUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether the store is active and visible',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
