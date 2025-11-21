@@ -55,4 +55,14 @@ export class UpdateProductDTO {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Category id to assign the product to',
+    type: Number,
+    example: 5,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  categoryId?: number;
 }
