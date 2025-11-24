@@ -10,6 +10,7 @@ import { CategoryModule } from './category/category.module';
 import { BookmarkModule } from './bookmark/bookmark.module';
 import { FileModule } from './file/file.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     AiModule,
     FileModule,
     SubscriptionModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}

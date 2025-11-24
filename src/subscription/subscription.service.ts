@@ -6,6 +6,7 @@ import {
   SubscriptionStatus,
   SubscriptionPlan,
   BillingCycle,
+  NotificationType,
 } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
@@ -14,6 +15,7 @@ import {
   SubscriptionCountByStatus,
   SubscriptionCountByBillingCycle,
 } from './dto/subscription-analytics.dto';
+import { NotificationService } from 'src/notification/notification.service';
 
 /**
  * Service responsible for handling subscription-related operations.
@@ -21,7 +23,10 @@ import {
  */
 @Injectable()
 export class SubscriptionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Retrieves an admin-defined subscription plan by its unique identifier.
@@ -173,7 +178,7 @@ export class SubscriptionService {
       });
     }
 
-    return this.prisma.userSubscription.create({
+    const userSubscription = await this.prisma.userSubscription.create({
       data: {
         price: templateSubscription.price,
         billingCycle: templateSubscription.billingCycle,
@@ -191,6 +196,20 @@ export class SubscriptionService {
         subscription: true,
       },
     });
+
+    // Notify user about subscription
+    this.notificationService
+      .notifySubscriptionStatusChanged(
+        userId,
+        NotificationType.SUBSCRIPTION_JOINED,
+        `Subscribed to ${templateSubscription.name}`,
+        `You have successfully subscribed to ${templateSubscription.name} plan.`,
+      )
+      .catch((err) => {
+        console.error('Error creating subscription notification:', err);
+      });
+
+    return userSubscription;
   }
 
   /**
@@ -227,7 +246,7 @@ export class SubscriptionService {
       },
     });
 
-    return this.prisma.userSubscription.create({
+    const userSubscription = await this.prisma.userSubscription.create({
       data: {
         price: templateSubscription.price,
         billingCycle: templateSubscription.billingCycle,
@@ -245,6 +264,20 @@ export class SubscriptionService {
         subscription: true,
       },
     });
+
+    // Notify user about subscription renewal/upgrade
+    this.notificationService
+      .notifySubscriptionStatusChanged(
+        userId,
+        NotificationType.SUBSCRIPTION_RENEWED,
+        `Subscription updated to ${templateSubscription.name}`,
+        `Your subscription has been updated to ${templateSubscription.name} plan.`,
+      )
+      .catch((err) => {
+        console.error('Error creating subscription notification:', err);
+      });
+
+    return userSubscription;
   }
 
   /**
@@ -260,7 +293,7 @@ export class SubscriptionService {
       throw new BadRequestException('No active subscription found');
     }
 
-    return this.prisma.userSubscription.update({
+    const cancelledSubscription = await this.prisma.userSubscription.update({
       where: { id: activeSubscription.id },
       data: {
         status: SubscriptionStatus.CANCELLED,
@@ -270,6 +303,20 @@ export class SubscriptionService {
         subscription: true,
       },
     });
+
+    // Notify user about cancellation
+    this.notificationService
+      .notifySubscriptionStatusChanged(
+        userId,
+        NotificationType.SUBSCRIPTION_CANCELLED,
+        'Subscription cancelled',
+        `Your ${cancelledSubscription.subscription?.name || 'subscription'} subscription has been cancelled.`,
+      )
+      .catch((err) => {
+        console.error('Error creating subscription notification:', err);
+      });
+
+    return cancelledSubscription;
   }
 
   /**

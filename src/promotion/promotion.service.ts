@@ -2,15 +2,30 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class PromotionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
-  create(createPromotionDto: CreatePromotionDto) {
-    return this.prisma.promotion.create({
+  async create(createPromotionDto: CreatePromotionDto) {
+    const promotion = await this.prisma.promotion.create({
       data: createPromotionDto,
     });
+
+    // Notify users who bookmarked the product or store
+    if (promotion.productId) {
+      this.notificationService
+        .notifyPromotionCreated(promotion.id, promotion.productId)
+        .catch((err) => {
+          console.error('Error creating promotion notification:', err);
+        });
+    }
+
+    return promotion;
   }
 
   findAll() {
