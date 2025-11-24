@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Store } from 'generated/prisma';
+import { Prisma, Store, StoreVerificationStatus } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
 
 /**
  * Service responsible for handling store-related operations.
@@ -8,7 +9,10 @@ import { PrismaService } from 'src/prisma/prisma.service';
  */
 @Injectable()
 export class StoreService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Retrieves a single store by its unique identifier.
@@ -92,7 +96,34 @@ export class StoreService {
     include?: Prisma.StoreInclude;
   }): Promise<Store> {
     const { where, data, include } = params;
-    return this.prisma.store.update({ where, data, include });
+
+    // Get old store values to detect verification status changes
+    const oldStore = await this.prisma.store.findUnique({
+      where,
+    });
+
+    const updatedStore = await this.prisma.store.update({
+      where,
+      data,
+      include,
+    });
+
+    // Notify about verification status changes
+    if (
+      oldStore &&
+      data.verificationStatus !== undefined &&
+      oldStore.verificationStatus !== updatedStore.verificationStatus
+    ) {
+      const isVerified =
+        updatedStore.verificationStatus === StoreVerificationStatus.VERIFIED;
+      this.notificationService
+        .notifyStoreVerificationStatusChanged(updatedStore.id, isVerified)
+        .catch((err) => {
+          console.error('Error creating store verification notification:', err);
+        });
+    }
+
+    return updatedStore;
   }
 
   /**
