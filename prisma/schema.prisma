@@ -21,6 +21,7 @@ model User {
   StoreBookmark     StoreBookmark[]
   ProductBookmark   ProductBookmark[]
   subscriptions     UserSubscription[]
+  notifications     Notification[]
 }
 
 enum UserRole {
@@ -180,4 +181,42 @@ enum SubscriptionStatus {
 enum BillingCycle {
   MONTHLY
   YEARLY
+}
+
+model Notification {
+  id        Int                @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  readAt    DateTime?
+
+  // Optional references to related entities
+  productId   Int?
+  storeId     Int?
+  promotionId Int?
+
+  user User @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  PRODUCT_CREATED
+  PRODUCT_PRICE_CHANGED
+  PRODUCT_STOCK_CHANGED
+  PRODUCT_STATUS_CHANGED
+  PROMOTION_CREATED
+  PROMOTION_STARTED
+  PROMOTION_ENDING_SOON
+  STORE_VERIFIED
+  STORE_CREATED
+  SUBSCRIPTION_JOINED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_EXPIRED
+  SUBSCRIPTION_RENEWED
 }
