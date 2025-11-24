@@ -3,9 +3,10 @@ import { SubscriptionService } from './subscription.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { SubscriptionController } from './subscription.controller';
 import { AuthModule } from 'src/auth/auth.module';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, NotificationModule],
   providers: [SubscriptionService],
   controllers: [SubscriptionController],
   exports: [SubscriptionService],
