@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Store } from 'generated/prisma';
+import { Prisma, Store, StoreVerificationStatus } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
 
 /**
  * Service responsible for handling store-related operations.
@@ -8,7 +9,10 @@ import { PrismaService } from 'src/prisma/prisma.service';
  */
 @Injectable()
 export class StoreService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Retrieves a single store by its unique identifier.
@@ -43,6 +47,32 @@ export class StoreService {
     return this.prisma.store.findMany({ skip, take, cursor, where, orderBy });
   }
 
+  async findNearby(
+  latitude: number,
+  longitude: number,
+  radiusKm: number = 10,
+) {
+  // Haversine formula approximation for nearby stores
+  const stores = await this.prisma.$queryRaw`
+    SELECT * FROM (
+      SELECT *, 
+        ( 6371 * acos( cos( radians(${latitude}) ) 
+        * cos( radians( latitude ) ) 
+        * cos( radians( longitude ) - radians(${longitude}) ) 
+        + sin( radians(${latitude}) ) 
+        * sin( radians( latitude ) ) ) ) AS distance 
+      FROM "Store" 
+      WHERE latitude IS NOT NULL 
+        AND longitude IS NOT NULL
+    ) AS stores_with_distance
+    WHERE distance < ${radiusKm}
+    ORDER BY distance
+    LIMIT 50
+  `;
+
+  return stores;
+}
+
   /**
    * Creates a new store in the database.
    * @param params.data - The data for creating the store
@@ -63,9 +93,37 @@ export class StoreService {
   async update(params: {
     where: Prisma.StoreWhereUniqueInput;
     data: Prisma.StoreUpdateInput;
+    include?: Prisma.StoreInclude;
   }): Promise<Store> {
-    const { where, data } = params;
-    return this.prisma.store.update({ where, data });
+    const { where, data, include } = params;
+
+    // Get old store values to detect verification status changes
+    const oldStore = await this.prisma.store.findUnique({
+      where,
+    });
+
+    const updatedStore = await this.prisma.store.update({
+      where,
+      data,
+      include,
+    });
+
+    // Notify about verification status changes
+    if (
+      oldStore &&
+      data.verificationStatus !== undefined &&
+      oldStore.verificationStatus !== updatedStore.verificationStatus
+    ) {
+      const isVerified =
+        updatedStore.verificationStatus === StoreVerificationStatus.VERIFIED;
+      this.notificationService
+        .notifyStoreVerificationStatusChanged(updatedStore.id, isVerified)
+        .catch((err) => {
+          console.error('Error creating store verification notification:', err);
+        });
+    }
+
+    return updatedStore;
   }
 
   /**

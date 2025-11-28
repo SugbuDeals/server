@@ -15,6 +15,10 @@ export class JwtAuthStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: PayloadDTO) {
-    return { userId: payload.sub, email: payload.email };
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      role: payload.role
+    };
   }
 }
