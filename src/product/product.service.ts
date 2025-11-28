@@ -16,14 +16,16 @@ export class ProductService {
     cursor?: Prisma.ProductWhereUniqueInput;
     where?: Prisma.ProductWhereInput;
     orderBy?: Prisma.ProductOrderByWithRelationInput;
-  }): Promise<Product[]> {
-    const { skip, take, cursor, where, orderBy } = params;
+    include?: Prisma.ProductInclude;
+  }): Promise<any[]> {
+    const { skip, take, cursor, where, orderBy, include } = params;
     return this.prisma.product.findMany({
       skip,
       take,
       cursor,
       where,
       orderBy,
+      include,
     });
   }
 
