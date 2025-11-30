@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from 'generated/prisma';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
 import * as bcrypt from 'bcrypt';
 
 /**
@@ -14,6 +15,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private notificationService: NotificationService,
   ) {}
 
   /**
@@ -93,6 +95,15 @@ export class AuthService {
         role,
       },
     });
+
+    // Send welcome notification to consumers
+    if (role === UserRole.CONSUMER) {
+      this.notificationService
+        .notifyConsumerWelcome(user.id)
+        .catch((err) => {
+          console.error('Error creating welcome notification:', err);
+        });
+    }
 
     // Generate and return access token
     return this.login(user);

@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { NotificationService } from '../notification/notification.service';
+import {
+  isQuestionablePromotionDiscount,
+} from 'src/notification/utils/pricing-validation.util';
 
 @Injectable()
 export class PromotionService {
@@ -14,7 +17,35 @@ export class PromotionService {
   async create(createPromotionDto: CreatePromotionDto) {
     const promotion = await this.prisma.promotion.create({
       data: createPromotionDto,
+      include: { product: true },
     });
+
+    // Check for questionable pricing and notify admin
+    let originalPrice: number | undefined;
+    if (promotion.product) {
+      originalPrice = Number(promotion.product.price);
+      const discountedPrice = originalPrice * (1 - promotion.discount / 100);
+      
+      if (
+        isQuestionablePromotionDiscount(
+          promotion.discount,
+          originalPrice,
+          discountedPrice,
+        )
+      ) {
+        this.notificationService
+          .notifyAdminQuestionablePromotionPricing(
+            promotion.id,
+            promotion.product.storeId,
+          )
+          .catch((err) => {
+            console.error(
+              'Error creating questionable pricing notification:',
+              err,
+            );
+          });
+      }
+    }
 
     // Notify users who bookmarked the product or store
     if (promotion.productId) {

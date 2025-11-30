@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma, Product } from 'generated/prisma';
 import { NotificationService } from 'src/notification/notification.service';
+import {
+  isQuestionableProductPrice,
+} from 'src/notification/utils/pricing-validation.util';
 
 @Injectable()
 export class ProductService {
@@ -39,6 +42,17 @@ export class ProductService {
     const product = await this.prisma.product.create({
       data,
     });
+
+    const productPrice = Number(product.price);
+
+    // Check for questionable pricing and notify admin
+    if (isQuestionableProductPrice(productPrice)) {
+      this.notificationService
+        .notifyAdminQuestionableProductPricing(product.id, product.storeId)
+        .catch((err) => {
+          console.error('Error creating questionable pricing notification:', err);
+        });
+    }
 
     // Notify users who bookmarked the store
     if (product.storeId) {

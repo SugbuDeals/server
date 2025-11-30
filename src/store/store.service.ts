@@ -80,7 +80,23 @@ export class StoreService {
    */
   async create(params: { data: Prisma.StoreCreateInput }): Promise<Store> {
     const { data } = params;
-    return this.prisma.store.create({ data });
+    const store = await this.prisma.store.create({ data });
+
+    // Notify retailer that store is under review
+    this.notificationService
+      .notifyStoreUnderReview(store.id)
+      .catch((err) => {
+        console.error('Error creating store review notification:', err);
+      });
+
+    // Notify all admins that a store was created
+    this.notificationService
+      .notifyAdminStoreCreated(store.id)
+      .catch((err) => {
+        console.error('Error creating admin store notification:', err);
+      });
+
+    return store;
   }
 
   /**

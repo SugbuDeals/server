@@ -9,12 +9,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { LocalAuthGuard } from './local-auth.guard';
 import { LocalAuthStrategy } from './local-auth.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     PrismaModule,
+    NotificationModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET as string,
       signOptions: { expiresIn: process.env.NODE_ENV === 'development' ? '10h' : '60s' },
