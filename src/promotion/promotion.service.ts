@@ -9,13 +9,10 @@ import {
 
 @Injectable()
 export class PromotionService {
-  constructor(
-    private prisma: PrismaService,
-    private notificationService: NotificationService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  async create(createPromotionDto: CreatePromotionDto) {
-    const promotion = await this.prisma.promotion.create({
+  create(createPromotionDto: CreatePromotionDto) {
+    return this.prisma.promotion.create({
       data: createPromotionDto,
       include: { product: true },
     });

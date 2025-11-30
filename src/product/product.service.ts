@@ -8,10 +8,7 @@ import {
 
 @Injectable()
 export class ProductService {
-  constructor(
-    private prisma: PrismaService,
-    private notificationService: NotificationService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async products(params: {
     skip?: number;
@@ -39,7 +36,7 @@ export class ProductService {
   }
 
   async createProduct(data: Prisma.ProductCreateInput): Promise<Product> {
-    const product = await this.prisma.product.create({
+    return this.prisma.product.create({
       data,
     });
 
@@ -71,44 +68,10 @@ export class ProductService {
     data: Prisma.ProductUpdateInput;
   }): Promise<Product> {
     const { where, data } = params;
-
-    // Get old product values to detect changes
-    const oldProduct = await this.prisma.product.findUnique({
-      where,
-    });
-
-    const updatedProduct = await this.prisma.product.update({
+    return this.prisma.product.update({
       data,
       where,
     });
-
-    // Notify about price changes
-    if (oldProduct && data.price !== undefined) {
-      const oldPrice = Number(oldProduct.price);
-      const newPrice = Number(updatedProduct.price);
-      if (oldPrice !== newPrice) {
-        this.notificationService
-          .notifyProductPriceChanged(updatedProduct.id, oldPrice, newPrice)
-          .catch((err) => {
-            console.error('Error creating price change notification:', err);
-          });
-      }
-    }
-
-    // Notify about stock changes
-    if (oldProduct && data.stock !== undefined) {
-      const oldStock = oldProduct.stock;
-      const newStock = updatedProduct.stock;
-      if (oldStock !== newStock) {
-        this.notificationService
-          .notifyProductStockChanged(updatedProduct.id, oldStock, newStock)
-          .catch((err) => {
-            console.error('Error creating stock change notification:', err);
-          });
-      }
-    }
-
-    return updatedProduct;
   }
 
   async deleteProduct(where: Prisma.ProductWhereUniqueInput): Promise<Product> {
