@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -10,9 +11,11 @@ import { CategoryModule } from './category/category.module';
 import { BookmarkModule } from './bookmark/bookmark.module';
 import { FileModule } from './file/file.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
     PrismaModule,
@@ -24,6 +27,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     AiModule,
     FileModule,
     SubscriptionModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}
