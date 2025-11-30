@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, Store } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
 
 /**
  * Service responsible for handling store-related operations.
@@ -8,7 +9,10 @@ import { PrismaService } from 'src/prisma/prisma.service';
  */
 @Injectable()
 export class StoreService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Retrieves a single store by its unique identifier.
@@ -81,14 +85,14 @@ export class StoreService {
     // Notify retailer that store is under review
     this.notificationService
       .notifyStoreUnderReview(store.id)
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('Error creating store review notification:', err);
       });
 
     // Notify all admins that a store was created
     this.notificationService
       .notifyAdminStoreCreated(store.id)
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('Error creating admin store notification:', err);
       });
 

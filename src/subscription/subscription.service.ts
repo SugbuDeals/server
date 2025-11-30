@@ -8,6 +8,7 @@ import {
   BillingCycle,
 } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
 import {
   SubscriptionAnalyticsDTO,
   SubscriptionCountByPlan,
@@ -21,7 +22,10 @@ import {
  */
 @Injectable()
 export class SubscriptionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Retrieves an admin-defined subscription plan by its unique identifier.
@@ -69,7 +73,7 @@ export class SubscriptionService {
     if (subscription.isActive) {
       this.notificationService
         .notifyNewSubscriptionAvailable(subscription.id)
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Error creating subscription availability notification:', err);
         });
     }

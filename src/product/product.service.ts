@@ -8,7 +8,10 @@ import {
 
 @Injectable()
 export class ProductService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   async products(params: {
     skip?: number;
@@ -36,7 +39,7 @@ export class ProductService {
   }
 
   async createProduct(data: Prisma.ProductCreateInput): Promise<Product> {
-    return this.prisma.product.create({
+    const product = await this.prisma.product.create({
       data,
     });
 
@@ -46,7 +49,7 @@ export class ProductService {
     if (isQuestionableProductPrice(productPrice)) {
       this.notificationService
         .notifyAdminQuestionableProductPricing(product.id, product.storeId)
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Error creating questionable pricing notification:', err);
         });
     }
@@ -55,7 +58,7 @@ export class ProductService {
     if (product.storeId) {
       this.notificationService
         .notifyProductCreated(product.id, product.storeId)
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Error creating product notification:', err);
         });
     }
