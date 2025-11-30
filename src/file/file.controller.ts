@@ -24,7 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
-import { unlink } from 'fs/promises';
+import { unlink, readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import { UPLOAD_PATH } from './file.module'; // Import the shared constant
 import { join } from 'path';
@@ -145,6 +145,67 @@ export class FileController {
       }
       this.logger.error(`Error deleting file: ${error.message}`);
       throw new BadRequestException('Unable to delete file');
+    }
+  }
+
+  @Delete('clear')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Clear all uploaded files' })
+  @ApiResponse({
+    status: 200,
+    description: 'All files cleared successfully',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error clearing files',
+  })
+  async clearAllFiles() {
+    try {
+      if (!existsSync(this.uploadPath)) {
+        this.logger.warn(`Upload directory does not exist: ${this.uploadPath}`);
+        return {
+          message: 'No files to clear',
+          deletedCount: 0,
+        };
+      }
+
+      const files = await readdir(this.uploadPath);
+      let deletedCount = 0;
+      const errors: string[] = [];
+
+      // Delete all files in the uploads directory
+      for (const file of files) {
+        try {
+          const filePath = join(this.uploadPath, file);
+          const fileStat = await stat(filePath);
+          
+          // Only delete files, not directories
+          if (fileStat.isFile()) {
+            await unlink(filePath);
+            deletedCount++;
+            this.logger.log(`Deleted file: ${file}`);
+          } else {
+            this.logger.warn(`Skipping directory: ${file}`);
+          }
+        } catch (error) {
+          const errorMessage = `Failed to delete ${file}: ${error.message}`;
+          this.logger.error(errorMessage);
+          errors.push(errorMessage);
+        }
+      }
+
+      this.logger.log(`Cleared ${deletedCount} file(s) from uploads directory`);
+
+      return {
+        message: 'All files cleared successfully',
+        deletedCount,
+        totalFiles: files.length,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+    } catch (error) {
+      this.logger.error(`Error clearing files: ${error.message}`);
+      throw new BadRequestException('Unable to clear files');
     }
   }
 }
