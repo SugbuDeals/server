@@ -24,26 +24,28 @@ export class PromotionService {
     let originalPrice: number | undefined;
     if (promotion.product) {
       originalPrice = Number(promotion.product.price);
-      const discountedPrice = originalPrice * (1 - promotion.discount / 100);
-      
-      if (
-        isQuestionablePromotionDiscount(
-          promotion.discount,
-          originalPrice,
-          discountedPrice,
-        )
-      ) {
-        this.notificationService
-          .notifyAdminQuestionablePromotionPricing(
-            promotion.id,
-            promotion.product.storeId,
+      if (originalPrice !== undefined) {
+        const discountedPrice = originalPrice * (1 - promotion.discount / 100);
+        
+        if (
+          isQuestionablePromotionDiscount(
+            promotion.discount,
+            originalPrice,
+            discountedPrice,
           )
-          .catch((err) => {
-            console.error(
-              'Error creating questionable pricing notification:',
-              err,
-            );
-          });
+        ) {
+          this.notificationService
+            .notifyAdminQuestionablePromotionPricing(
+              promotion.id,
+              promotion.product.storeId,
+            )
+            .catch((err: unknown) => {
+              console.error(
+                'Error creating questionable pricing notification:',
+                err,
+              );
+            });
+        }
       }
     }
 
@@ -51,7 +53,7 @@ export class PromotionService {
     if (promotion.productId) {
       this.notificationService
         .notifyPromotionCreated(promotion.id, promotion.productId)
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Error creating promotion notification:', err);
         });
     }

@@ -1,40 +1,44 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsString, IsEnum, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationType } from 'generated/prisma';
 
 export class CreateNotificationDto {
-  @ApiProperty({ description: 'User ID to notify' })
-  @IsInt()
-  @IsNotEmpty()
+  @ApiProperty({ description: 'User ID to send notification to', type: Number })
+  @IsNumber()
+  @Type(() => Number)
   userId: number;
 
-  @ApiProperty({ enum: NotificationType, description: 'Type of notification' })
+  @ApiProperty({
+    description: 'Type of notification',
+    enum: NotificationType,
+  })
   @IsEnum(NotificationType)
-  @IsNotEmpty()
   type: NotificationType;
 
   @ApiProperty({ description: 'Notification title' })
   @IsString()
-  @IsNotEmpty()
   title: string;
 
   @ApiProperty({ description: 'Notification message' })
   @IsString()
-  @IsNotEmpty()
   message: string;
 
-  @ApiProperty({ description: 'Related product ID', required: false })
-  @IsInt()
+  @ApiPropertyOptional({ description: 'Related product ID', type: Number })
+  @IsNumber()
+  @Type(() => Number)
   @IsOptional()
   productId?: number;
 
-  @ApiProperty({ description: 'Related store ID', required: false })
-  @IsInt()
+  @ApiPropertyOptional({ description: 'Related store ID', type: Number })
+  @IsNumber()
+  @Type(() => Number)
   @IsOptional()
   storeId?: number;
 
-  @ApiProperty({ description: 'Related promotion ID', required: false })
-  @IsInt()
+  @ApiPropertyOptional({ description: 'Related promotion ID', type: Number })
+  @IsNumber()
+  @Type(() => Number)
   @IsOptional()
   promotionId?: number;
 }

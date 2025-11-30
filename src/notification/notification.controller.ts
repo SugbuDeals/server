@@ -5,8 +5,8 @@ import {
   Patch,
   Delete,
   Param,
-  Body,
   Query,
+  Body,
   UseGuards,
   Request,
   ParseIntPipe,
@@ -14,18 +14,16 @@ import {
 import {
   ApiTags,
   ApiOperation,
-  ApiBearerAuth,
+  ApiOkResponse,
   ApiParam,
   ApiQuery,
-  ApiOkResponse,
   ApiBody,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { CreateNotificationDto } from './dto/create-notification.dto';
-import { UpdateNotificationDto } from './dto/update-notification.dto';
-import { NotificationResponseDto } from './dto/notification-response.dto';
+import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -39,11 +37,8 @@ export class NotificationController {
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
   @ApiQuery({ name: 'read', required: false, type: Boolean })
-  @ApiOkResponse({
-    description: 'Returns list of notifications',
-    type: [NotificationResponseDto],
-  })
-  async getNotifications(
+  @ApiOkResponse({ description: 'Returns list of notifications' })
+  async getUserNotifications(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Query('skip') skip?: string,
     @Query('take') take?: string,
@@ -51,29 +46,26 @@ export class NotificationController {
   ) {
     const userId = req.user.sub;
     return this.notificationService.getUserNotifications(userId, {
-      skip: skip ? parseInt(skip, 10) : undefined,
-      take: take ? parseInt(take, 10) : undefined,
-      read: read === 'true' ? true : read === 'false' ? false : undefined,
+      skip: skip ? Number(skip) : undefined,
+      take: take ? Number(take) : undefined,
+      read: read !== undefined ? read === 'true' : undefined,
     });
   }
 
   @Get('unread-count')
   @ApiOperation({ summary: 'Get unread notification count' })
-  @ApiOkResponse({ description: 'Returns unread count', type: Number })
+  @ApiOkResponse({ description: 'Returns unread count' })
   async getUnreadCount(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
   ) {
     const userId = req.user.sub;
-    return { count: await this.notificationService.getUnreadCount(userId) };
+    return this.notificationService.getUnreadCount(userId);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a notification (admin only)' })
+  @ApiOperation({ summary: 'Create a notification' })
   @ApiBody({ type: CreateNotificationDto })
-  @ApiOkResponse({
-    description: 'Notification created',
-    type: NotificationResponseDto,
-  })
+  @ApiOkResponse({ description: 'Notification created' })
   async createNotification(@Body() createNotificationDto: CreateNotificationDto) {
     return this.notificationService.createNotification(createNotificationDto);
   }
@@ -81,16 +73,13 @@ export class NotificationController {
   @Patch(':id/read')
   @ApiOperation({ summary: 'Mark notification as read' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({
-    description: 'Notification marked as read',
-    type: NotificationResponseDto,
-  })
+  @ApiOkResponse({ description: 'Notification marked as read' })
   async markAsRead(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) notificationId: number,
   ) {
     const userId = req.user.sub;
-    return this.notificationService.markAsRead(id, userId);
+    return this.notificationService.markAsRead(notificationId, userId);
   }
 
   @Patch('mark-all-read')
@@ -106,16 +95,13 @@ export class NotificationController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a notification' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({
-    description: 'Notification deleted',
-    type: NotificationResponseDto,
-  })
+  @ApiOkResponse({ description: 'Notification deleted' })
   async deleteNotification(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) notificationId: number,
   ) {
     const userId = req.user.sub;
-    return this.notificationService.deleteNotification(id, userId);
+    return this.notificationService.deleteNotification(notificationId, userId);
   }
 }
 
