@@ -1,5 +1,5 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { ChatRequestDto, TextGenerationDto } from './dto/chat.dto';
 import {
@@ -15,6 +15,7 @@ export class AiController {
 
   @Post('chat')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiBody({ type: ChatRequestDto })
   async chat(@Body() chatRequest: ChatRequestDto) {
     return this.aiService.chat(chatRequest.messages);
@@ -22,6 +23,7 @@ export class AiController {
 
   @Post('generate')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiBody({ type: TextGenerationDto })
   async generateText(@Body() request: TextGenerationDto) {
     return this.aiService.generateText(request.prompt);
@@ -29,6 +31,7 @@ export class AiController {
 
   @Post('recommendations')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiBody({ type: FreeformRecommendationDto })
   async getRecommendations(@Body() request: FreeformRecommendationDto) {
     return this.aiService.getRecommendationsFromQuery(
