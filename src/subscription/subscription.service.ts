@@ -68,7 +68,18 @@ export class SubscriptionService {
     data: Prisma.SubscriptionCreateInput;
   }): Promise<Subscription> {
     const { data } = params;
-    return this.prisma.subscription.create({ data });
+    const subscription = await this.prisma.subscription.create({ data });
+
+    // Notify all retailers about the new subscription
+    if (subscription.isActive) {
+      this.notificationService
+        .notifyNewSubscriptionAvailable(subscription.id)
+        .catch((err) => {
+          console.error('Error creating subscription availability notification:', err);
+        });
+    }
+
+    return subscription;
   }
 
   /**

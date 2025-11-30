@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Notification, NotificationType, Prisma } from 'generated/prisma';
+import {
+  Notification,
+  NotificationType,
+  Prisma,
+  UserRole,
+  SubscriptionStatus,
+} from 'generated/prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
 @Injectable()
@@ -320,14 +326,278 @@ export class NotificationService {
     await this.createNotification({
       userId: store.ownerId,
       type: NotificationType.STORE_VERIFIED,
-      title: isVerified
-        ? 'Store verified successfully!'
-        : 'Store verification status changed',
+      title: isVerified ? 'Store Approved!' : 'Store verification status changed',
       message: isVerified
-        ? `Your store "${store.name}" has been verified.`
+        ? 'You are now approve, you can now show your products on the air'
         : `The verification status of "${store.name}" has been updated.`,
       storeId,
     });
+  }
+
+  // ========== Retailer Notifications ==========
+
+  /**
+   * Notifies retailer that their store is under review
+   */
+  async notifyStoreUnderReview(storeId: number): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      include: { owner: true },
+    });
+
+    if (!store) return;
+
+    await this.createNotification({
+      userId: store.ownerId,
+      type: NotificationType.STORE_UNDER_REVIEW,
+      title: 'Store Review in Progress',
+      message: 'Please wait for a moment, admin is reviewing your store',
+      storeId,
+    });
+  }
+
+  /**
+   * Notifies retailers about new subscription plans available
+   */
+  async notifyNewSubscriptionAvailable(subscriptionId: number): Promise<void> {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription || !subscription.isActive) return;
+
+    // Get all retailers
+    const retailers = await this.prisma.user.findMany({
+      where: { role: UserRole.RETAILER },
+      select: { id: true },
+    });
+
+    const retailerIds = retailers.map((r) => r.id);
+
+    if (retailerIds.length > 0) {
+      await this.createNotificationsForUsers(
+        retailerIds,
+        NotificationType.SUBSCRIPTION_AVAILABLE,
+        'New Subscription Available!',
+        "There's new subscription, you might be interested in!",
+      );
+    }
+  }
+
+  /**
+   * Notifies retailer that their promotion is about to end
+   */
+  async notifyPromotionEndingSoon(promotionId: number): Promise<void> {
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { id: promotionId },
+      include: { product: { include: { store: true } } },
+    });
+
+    if (!promotion || !promotion.endsAt) return;
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: promotion.product?.storeId || 0 },
+      include: { owner: true },
+    });
+
+    if (!store) return;
+
+    await this.createNotification({
+      userId: store.ownerId,
+      type: NotificationType.PROMOTION_ENDING_SOON,
+      title: 'Promotion Ending Soon',
+      message: 'Your promotion is about to end, please check it out',
+      promotionId,
+      storeId: store.id,
+    });
+  }
+
+  /**
+   * Notifies retailer that their promotion has ended
+   */
+  async notifyPromotionEnded(promotionId: number): Promise<void> {
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { id: promotionId },
+      include: { product: { include: { store: true } } },
+    });
+
+    if (!promotion) return;
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: promotion.product?.storeId || 0 },
+      include: { owner: true },
+    });
+
+    if (!store) return;
+
+    await this.createNotification({
+      userId: store.ownerId,
+      type: NotificationType.PROMOTION_ENDED,
+      title: 'Promotion Ended',
+      message: `Your promotion "${promotion.title}" has ended`,
+      promotionId,
+      storeId: store.id,
+    });
+  }
+
+  /**
+   * Notifies retailer that their subscription is about to end
+   */
+  async notifySubscriptionEndingSoon(userId: number): Promise<void> {
+    const userSubscription = await this.prisma.userSubscription.findFirst({
+      where: {
+        userId,
+        status: SubscriptionStatus.ACTIVE,
+      },
+      include: {
+        subscription: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!userSubscription || !userSubscription.endsAt) return;
+
+    await this.createNotification({
+      userId,
+      type: NotificationType.SUBSCRIPTION_ENDING_SOON,
+      title: 'Subscription Ending Soon',
+      message: 'Your subscription is about to end, please check it out',
+    });
+  }
+
+  // ========== Consumer Notifications ==========
+
+  /**
+   * Welcomes a new consumer user
+   */
+  async notifyConsumerWelcome(userId: number): Promise<void> {
+    await this.createNotification({
+      userId,
+      type: NotificationType.CONSUMER_WELCOME,
+      title: 'Welcome!',
+      message: 'Welcome consumer, please enjoy and find products, deals near you!',
+    });
+  }
+
+  /**
+   * Notifies consumer about promotions nearby their location
+   */
+  async notifyPromotionNearby(
+    userId: number,
+    promotionId: number,
+    storeId: number,
+  ): Promise<void> {
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { id: promotionId },
+      include: { product: { include: { store: true } } },
+    });
+
+    if (!promotion) return;
+
+    await this.createNotification({
+      userId,
+      type: NotificationType.PROMOTION_NEARBY,
+      title: 'Promotion Nearby!',
+      message: "There's a Promotion Nearby Check it out!",
+      promotionId,
+      storeId,
+    });
+  }
+
+  /**
+   * Reminds consumer to turn on GPS
+   */
+  async notifyGpsReminder(userId: number): Promise<void> {
+    await this.createNotification({
+      userId,
+      type: NotificationType.GPS_REMINDER,
+      title: 'GPS Reminder',
+      message:
+        'Be advised, turn on your gps so that we can track your position accurately',
+    });
+  }
+
+  // ========== Admin Notifications ==========
+
+  /**
+   * Notifies all admins when a store is created and waiting for approval
+   */
+  async notifyAdminStoreCreated(storeId: number): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!store) return;
+
+    // Get all admin users
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: { id: true },
+    });
+
+    const adminIds = admins.map((a) => a.id);
+
+    if (adminIds.length > 0) {
+      await this.createNotificationsForUsers(
+        adminIds,
+        NotificationType.STORE_CREATED,
+        'New Store Created',
+        'A store is created, waiting for your approval',
+        { storeId },
+      );
+    }
+  }
+
+  /**
+   * Notifies all admins about questionable product pricing
+   */
+  async notifyAdminQuestionableProductPricing(
+    productId: number,
+    storeId: number,
+  ): Promise<void> {
+    // Get all admin users
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: { id: true },
+    });
+
+    const adminIds = admins.map((a) => a.id);
+
+    if (adminIds.length > 0) {
+      await this.createNotificationsForUsers(
+        adminIds,
+        NotificationType.QUESTIONABLE_PRICING_PRODUCT,
+        'Questionable Product Pricing',
+        `A product has made but has questionable pricing, (${storeId})`,
+        { productId, storeId },
+      );
+    }
+  }
+
+  /**
+   * Notifies all admins about questionable promotion pricing
+   */
+  async notifyAdminQuestionablePromotionPricing(
+    promotionId: number,
+    storeId: number,
+  ): Promise<void> {
+    // Get all admin users
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: { id: true },
+    });
+
+    const adminIds = admins.map((a) => a.id);
+
+    if (adminIds.length > 0) {
+      await this.createNotificationsForUsers(
+        adminIds,
+        NotificationType.QUESTIONABLE_PRICING_PROMOTION,
+        'Questionable Promotion Pricing',
+        `A promotion has made but has questionable pricing, (${storeId})`,
+        { promotionId, storeId },
+      );
+    }
   }
 
   /**
