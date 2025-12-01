@@ -3,6 +3,7 @@ import {
   Delete,
   Param,
   UseGuards,
+  ForbiddenException,
   UnauthorizedException,
   Request,
   Get,
@@ -27,6 +28,8 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Prisma, User, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { UpdateUserDTO } from './dto/updateUser.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
 
 @ApiTags('Users')
 @Controller('user')
@@ -109,8 +112,8 @@ export class UserController {
       return this.userService.delete({ where: { id: userId } });
     }
 
-    throw new UnauthorizedException(
-      'You are not authorized to delete this user account',
+    throw new ForbiddenException(
+      'You are not allowed to delete this user account',
     );
   }
 
@@ -142,8 +145,8 @@ export class UserController {
       requestingUser.role !== UserRole.ADMIN &&
       requestingUser.sub !== userId
     ) {
-      throw new UnauthorizedException(
-        'You are not authorized to update this user account',
+      throw new ForbiddenException(
+        'You are not allowed to update this user account',
       );
     }
 
@@ -168,7 +171,8 @@ export class UserController {
   }
 
   @Patch(':id/approve')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Admin: approve retailer account' })
   @ApiParam({
@@ -191,11 +195,10 @@ export class UserController {
     }
 
     if (adminUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Only admins can approve retailer accounts',
       );
     }
-
     return this.userService.update({
       where: { id: userId },
       data: { role: UserRole.RETAILER },

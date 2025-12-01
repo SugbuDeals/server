@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -28,6 +29,8 @@ import { UpdateStoreDTO } from './dto/updateStore.dto';
 import { ManageStoreStatusDTO } from './dto/manageStoreStatus.dto';
 import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
 
 @ApiTags('Stores')
 @Controller('store')
@@ -154,12 +157,26 @@ export class StoreController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a store' })
   @ApiBody({ type: CreateStoreDTO })
-  async createStore(@Body() createStoreDTO: CreateStoreDTO) {
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
+  async createStore(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Body() createStoreDTO: CreateStoreDTO,
+  ) {
     const { ownerId, ...storeParams } = createStoreDTO;
+    const requestingUser = req.user;
+
+    if (
+      requestingUser.role === UserRole.RETAILER &&
+      ownerId !== requestingUser.sub
+    ) {
+      throw new ForbiddenException(
+        'Retailers can only create stores for their own account',
+      );
+    }
 
     return this.storeService.create({
       data: {
@@ -174,19 +191,44 @@ export class StoreController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateStoreDTO })
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async updateStore(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
     @Body() updateStoreDTO: UpdateStoreDTO,
   ) {
+    const requestingUser = req.user;
+    const storeId = Number(id);
+
+    if (!storeId || Number.isNaN(storeId)) {
+      throw new BadRequestException('Invalid store id');
+    }
+
+    if (requestingUser.role === UserRole.RETAILER) {
+      const existingStore = await this.storeService.store({
+        where: { id: storeId },
+      });
+
+      if (!existingStore) {
+        throw new BadRequestException('Store not found');
+      };
+
+      if (existingStore.ownerId !== requestingUser.sub) {
+        throw new ForbiddenException(
+          'Retailers can only update their own stores',
+        );
+      }
+    }
+
     const { ownerId, ...storeParams } = updateStoreDTO;
 
     return this.storeService.update({
-      where: { id: Number(id) },
+      where: { id: storeId },
       data: {
         ...storeParams,
         owner: ownerId
@@ -201,7 +243,8 @@ export class StoreController {
   }
 
   @Patch(':id/admin-status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Admin: manage store verification / active status' })
   @ApiParam({ name: 'id', type: Number })
@@ -220,11 +263,10 @@ export class StoreController {
     }
 
     if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'Only admins can manage store verification or status',
       );
     }
-
     const data: Prisma.StoreUpdateInput = {};
 
     if (manageStoreStatusDTO.verificationStatus) {
@@ -248,14 +290,41 @@ export class StoreController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a store' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Store deleted' })
-  async deleteStore(@Param('id') id: string) {
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
+  async deleteStore(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id') id: string,
+  ) {
+    const requestingUser = req.user;
+    const storeId = Number(id);
+
+    if (!storeId || Number.isNaN(storeId)) {
+      throw new BadRequestException('Invalid store id');
+    }
+
+    if (requestingUser.role === UserRole.RETAILER) {
+      const existingStore = await this.storeService.store({
+        where: { id: storeId },
+      });
+
+      if (!existingStore) {
+        throw new BadRequestException('Store not found');
+      }
+
+      if (existingStore.ownerId !== requestingUser.sub) {
+        throw new ForbiddenException(
+          'Retailers can only delete their own stores',
+        );
+      }
+    }
+
     return this.storeService.delete({
-      where: { id: Number(id) },
+      where: { id: storeId },
     });
   }
 }
