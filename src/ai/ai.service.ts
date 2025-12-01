@@ -5,6 +5,7 @@ import { ProductService } from '../product/product.service';
 import { PromotionService } from '../promotion/promotion.service';
 import { Product, Store } from 'generated/prisma';
 import { StoreService } from '../store/store.service';
+import { SystemService } from '../system/system.service';
 
 @Injectable()
 export class AiService implements OnModuleInit {
@@ -15,6 +16,7 @@ export class AiService implements OnModuleInit {
     private productService: ProductService,
     private promotionService: PromotionService,
     private storeService: StoreService,
+    private systemService: SystemService,
   ) {}
 
   async onModuleInit() {
@@ -76,13 +78,32 @@ User query: "${query}"`;
     latitude?: number,
     longitude?: number,
   ) {
-    // If user asks to see all products, bypass AI and return the catalog summary
-    if (this.isShowAllProductsQuery(query)) {
-      return this.listAllProductsSummary();
+    // Guard: system enable/disable
+    if (!this.systemService.isEnabled()) {
+      return {
+        role: 'assistant',
+        content: 'The recommendation system is currently disabled. Please try again later.',
+      };
     }
 
-    // Default: single product recommendation with one similar alternative in one paragraph
-    return this.generateProductRecommendations(query, 1, latitude, longitude);
+    let success = true;
+
+    // If user asks to see all products, bypass AI and return the catalog summary
+    try {
+      let result;
+      if (this.isShowAllProductsQuery(query)) {
+        result = await this.listAllProductsSummary();
+      } else {
+        // Default: single product recommendation with one similar alternative in one paragraph
+        result = await this.generateProductRecommendations(query, 1, latitude, longitude);
+      }
+      return result;
+    } catch (error) {
+      success = false;
+      throw error;
+    } finally {
+      this.systemService.trackRequest(success);
+    }
   }
 
   private isShowAllProductsQuery(query: string): boolean {
