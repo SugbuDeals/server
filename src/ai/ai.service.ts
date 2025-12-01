@@ -40,11 +40,182 @@ export class AiService implements OnModuleInit {
     );
   }
 
+  /**
+   * Prefer Groq compound models when using built-in tools.
+   * See: https://console.groq.com/docs/tool-use/built-in-tools
+   */
+  private async getToolsModelName(): Promise<string> {
+    return this.configService.get<string>('GROQ_TOOLS_MODEL_NAME') || 'groq/compound';
+  }
+
   private buildProviderErrorMessage(context: string, error: any): string {
     const message = error?.message ?? 'Unknown error';
     const code =
       error?.response?.status ?? error?.status ?? error?.code ?? undefined;
     return code ? `${context}: ${message} (code: ${code})` : `${context}: ${message}`;
+  }
+
+  /**
+   * Local tool definitions exposed to Groq for function calling.
+   * See: https://console.groq.com/docs/tool-use/overview and
+   * https://console.groq.com/docs/tool-use/local-tool-calling
+   */
+  private getLocalToolDefinitions() {
+    return [
+      {
+        type: 'function',
+        function: {
+          name: 'search_products',
+          description:
+            'Searches products in the local catalog by name or description and returns a concise list of matches.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description:
+                  'Free-text search query for product name or description (e.g. "rice cooker", "milk").',
+              },
+              limit: {
+                type: 'integer',
+                description: 'Maximum number of products to return.',
+                minimum: 1,
+                maximum: 50,
+              },
+            },
+            required: ['query'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'search_stores',
+          description:
+            'Searches nearby or matching stores by name or description and returns basic store info.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description:
+                  'Free-text search query for store name or description (e.g. "grocery", "hardware").',
+              },
+              limit: {
+                type: 'integer',
+                description: 'Maximum number of stores to return.',
+                minimum: 1,
+                maximum: 50,
+              },
+            },
+            required: ['query'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'search_promotions',
+          description:
+            'Searches active promotions and returns matching deals with title, description, and discount.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description:
+                  'Free-text search query for promotion title or description (e.g. "discount", "sale", "coupon").',
+              },
+              limit: {
+                type: 'integer',
+                description: 'Maximum number of promotions to return.',
+                minimum: 1,
+                maximum: 50,
+              },
+            },
+            required: ['query'],
+          },
+        },
+      },
+    ];
+  }
+
+  private async executeLocalTool(
+    name: string,
+    args: any,
+  ): Promise<unknown> {
+    switch (name) {
+      case 'search_products': {
+        const query: string = args?.query ?? '';
+        const limit: number = args?.limit ?? 10;
+        const products = await this.productService.products({
+          where: query
+            ? {
+                OR: [
+                  { name: { contains: query, mode: 'insensitive' } },
+                  { description: { contains: query, mode: 'insensitive' } },
+                ],
+              }
+            : undefined,
+          take: Math.min(Math.max(limit, 1), 50),
+        });
+        return products.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          storeId: p.storeId,
+        }));
+      }
+      case 'search_stores': {
+        const query: string = args?.query ?? '';
+        const limit: number = args?.limit ?? 10;
+        const stores = await this.storeService.stores({
+          where: query
+            ? {
+                OR: [
+                  { name: { contains: query, mode: 'insensitive' } },
+                  { description: { contains: query, mode: 'insensitive' } },
+                ],
+              }
+            : undefined,
+          take: Math.min(Math.max(limit, 1), 50),
+        });
+        return stores.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+        }));
+      }
+      case 'search_promotions': {
+        const query: string = args?.query ?? '';
+        const limit: number = args?.limit ?? 10;
+        const now = new Date();
+        const promotions = await this.promotionService.findAll();
+        const filtered = promotions.filter((promo: any) => {
+          const active =
+            promo.active &&
+            promo.startsAt &&
+            new Date(promo.startsAt) <= now &&
+            (!promo.endsAt || new Date(promo.endsAt) >= now);
+          if (!active) return false;
+          if (!query) return true;
+          const haystack = `${promo.title ?? ''} ${promo.description ?? ''}`.toLowerCase();
+          return haystack.includes(String(query).toLowerCase());
+        });
+        return filtered.slice(0, Math.min(Math.max(limit, 1), 50)).map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          discount: p.discount,
+          productId: p.productId,
+        }));
+      }
+      default:
+        throw new InternalServerErrorException(
+          `Unknown local tool called by Groq: ${name}`,
+        );
+    }
   }
 
   private async classifyRecommendationIntent(
@@ -279,6 +450,96 @@ User query: "${query}"`;
       );
       throw new InternalServerErrorException(
         this.buildProviderErrorMessage('AI chat completion failure', error),
+      );
+    }
+  }
+
+  /**
+   * Agent-style chat that allows Groq to call local tools (products, stores, promotions)
+   * and, when configured, Groq built-in tools.
+   *
+   * See: https://console.groq.com/docs/tool-use/overview
+   */
+  async agentChat(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  ) {
+    try {
+      const tools = this.getLocalToolDefinitions();
+
+      const initialMessages = [
+        {
+          role: 'system' as const,
+          content:
+            'You are a shopping assistant for a local marketplace. ' +
+            'You can call tools to search products, stores, and promotions. ' +
+            'Prefer calling tools when the user asks about specific items, shops, or deals.',
+        },
+        ...messages,
+      ];
+
+      // First call: let the model decide if tools are needed
+      const firstCompletion = await this.groq.chat.completions.create({
+        model: await this.getToolsModelName(),
+        messages: initialMessages as any,
+        tools: tools as any,
+        tool_choice: 'auto' as any,
+      });
+
+      const firstMessage: any = firstCompletion.choices?.[0]?.message;
+      const toolCalls: any[] = firstMessage?.tool_calls ?? [];
+
+      if (!toolCalls.length) {
+        return firstMessage;
+      }
+
+      // Execute each requested tool locally
+      const toolMessages: any[] = [];
+
+      for (const call of toolCalls) {
+        const toolName = call.function?.name;
+        let args: any = {};
+        try {
+          args =
+            typeof call.function?.arguments === 'string'
+              ? JSON.parse(call.function.arguments || '{}')
+              : call.function?.arguments || {};
+        } catch (parseError) {
+          this.logger.error(
+            `Failed to parse tool arguments for "${toolName}"`,
+            (parseError as any)?.stack || String(parseError),
+          );
+          throw new InternalServerErrorException(
+            `Failed to parse tool arguments for "${toolName}"`,
+          );
+        }
+
+        const result = await this.executeLocalTool(toolName, args);
+
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          name: toolName,
+          content: JSON.stringify(result),
+        });
+      }
+
+      // Second call: provide tool results back to the model for final answer
+      const secondCompletion = await this.groq.chat.completions.create({
+        model: await this.getToolsModelName(),
+        messages: [...initialMessages, firstMessage, ...toolMessages] as any,
+      });
+
+      return secondCompletion.choices?.[0]?.message;
+    } catch (error: any) {
+      this.logger.error(
+        'AI agentChat with tools failure',
+        error?.stack || String(error),
+      );
+      throw new InternalServerErrorException(
+        this.buildProviderErrorMessage(
+          'AI agentChat with tools failure',
+          error,
+        ),
       );
     }
   }

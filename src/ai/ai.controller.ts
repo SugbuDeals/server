@@ -21,6 +21,14 @@ export class AiController {
     return this.aiService.chat(chatRequest.messages);
   }
 
+  @Post('agent-chat')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiBody({ type: ChatRequestDto })
+  async agentChat(@Body() chatRequest: ChatRequestDto) {
+    return this.aiService.agentChat(chatRequest.messages);
+  }
+
   @Post('generate')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
