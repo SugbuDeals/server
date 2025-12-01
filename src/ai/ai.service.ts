@@ -70,14 +70,19 @@ User query: "${query}"`;
     return 'product';
   }
 
-  async getRecommendationsFromQuery(query: string, count: number = 3) {
+  async getRecommendationsFromQuery(
+    query: string,
+    count: number = 3,
+    latitude?: number,
+    longitude?: number,
+  ) {
     // If user asks to see all products, bypass AI and return the catalog summary
     if (this.isShowAllProductsQuery(query)) {
       return this.listAllProductsSummary();
     }
 
     // Default: single product recommendation with one similar alternative in one paragraph
-    return this.generateProductRecommendations(query, 1);
+    return this.generateProductRecommendations(query, 1, latitude, longitude);
   }
 
   private isShowAllProductsQuery(query: string): boolean {
@@ -132,16 +137,20 @@ User query: "${query}"`;
 
   private async formatProductsForAI(products: Product[]): Promise<string> {
     return products
-      .map((p) => `- ${p.name}: ${p.description} (Price: ₱${p.price})`)
+      .map((p) => `- ID: ${p.id}, ${p.name}: ${p.description} (Price: ₱${p.price})`)
       .join('\n');
   }
 
   async generateProductRecommendations(
     userPreferences: string,
     count: number = 3,
+    latitude?: number,
+    longitude?: number,
   ) {
-    // First get all available products
-    const products = await this.productService.products({});
+    // First get all available products with store information
+    const products = await this.productService.products({
+      include: { store: true },
+    });
 
     const productsList = await this.formatProductsForAI(products);
 
@@ -153,21 +162,129 @@ User preferences: "${userPreferences}"
 Task: Recommend exactly 1 primary product and include exactly 1 similar alternative.
 Style: One concise paragraph only. No lists, no headings, no extra lines.
 Required content in this order within the SAME paragraph:
-- Primary: {product name}, brief justification (≤18 words), Price: ₱{price}, Distance: {km or "unknown"}.
+- Primary: {product name}, brief justification (≤18 words), Price: ₱{price}.
 - Similar: {product name}, Price: ₱{price} (one short reason ≤8 words).
-Output rules:
-- Output a single paragraph only. No numbering, no bullets, no extra lines.`;
+
+IMPORTANT: After your paragraph recommendation, add a JSON object on a new line with this exact format:
+{"productIds": [primary_product_id, similar_product_id]}
+
+Example:
+Your paragraph recommendation here.
+
+{"productIds": [5, 12]}`;
 
     const response = await this.chat([
       {
         role: 'system',
         content:
-          'You are a knowledgeable shopping assistant who provides thoughtful, personalized product recommendations.',
+          'You are a knowledgeable shopping assistant who provides thoughtful, personalized product recommendations. Always include the JSON object with productIds after your recommendation.',
       },
       { role: 'user', content: prompt },
     ]);
 
-    return response;
+    const recommendationText = response?.content || '';
+    
+    // Extract product IDs from JSON in the response
+    let productIds: number[] = [];
+    try {
+      const jsonMatch = recommendationText.match(/\{[\s\S]*"productIds"[\s\S]*\}/);
+      if (jsonMatch) {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        productIds = jsonData.productIds || [];
+      }
+    } catch (error) {
+      console.error('Error parsing product IDs from AI response:', error);
+    }
+
+    // If no product IDs found, try to extract from product names
+    if (productIds.length === 0) {
+      for (const product of products) {
+        if (recommendationText.includes(product.name)) {
+          productIds.push(product.id);
+          if (productIds.length >= 2) break;
+        }
+      }
+    }
+
+    // Get recommended products with store information
+    const recommendedProducts = await this.productService.products({
+      where: {
+        id: { in: productIds },
+      },
+      include: { store: true },
+    });
+
+    // Calculate distances if location is provided
+    const productsWithDistance = await Promise.all(
+      recommendedProducts.map(async (product: any) => {
+        let distance: number | null = null;
+        
+        if (latitude && longitude && product.store?.latitude && product.store?.longitude) {
+          // Use findNearby to get distance
+          const nearbyStores = (await this.storeService.findNearby(
+            latitude,
+            longitude,
+            1000, // Large radius to ensure we find the store
+          )) as any[];
+          
+          const storeWithDistance = nearbyStores.find(
+            (s: any) => s.id === product.storeId,
+          );
+          
+          if (storeWithDistance && storeWithDistance.distance !== undefined) {
+            distance = parseFloat(Number(storeWithDistance.distance).toFixed(2));
+          } else {
+            // Calculate distance manually using Haversine formula
+            distance = this.calculateDistance(
+              latitude,
+              longitude,
+              product.store.latitude,
+              product.store.longitude,
+            );
+          }
+        }
+
+        return {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          imageUrl: product.imageUrl || null,
+          storeId: product.storeId,
+          storeName: product.store?.name || null,
+          distance: distance,
+        };
+      }),
+    );
+
+    return {
+      recommendation: recommendationText.split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0].trim(),
+      products: productsWithDistance,
+    };
+  }
+
+  private calculateDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number {
+    const R = 6371; // Radius of the Earth in km
+    const dLat = this.deg2rad(lat2 - lat1);
+    const dLon = this.deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.deg2rad(lat1)) *
+        Math.cos(this.deg2rad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in km
+    return parseFloat(distance.toFixed(2));
+  }
+
+  private deg2rad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 
   private async formatPromotionsForAI(promotions: any[]): Promise<string> {

@@ -60,4 +60,24 @@ export class FreeformRecommendationDto {
   @IsNumber()
   @IsOptional()
   count?: number;
+
+  @ApiPropertyOptional({ 
+    example: 10.3157, 
+    description: 'User latitude for distance calculation',
+    minimum: -90,
+    maximum: 90
+  })
+  @IsNumber()
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ 
+    example: 123.8854, 
+    description: 'User longitude for distance calculation',
+    minimum: -180,
+    maximum: 180
+  })
+  @IsNumber()
+  @IsOptional()
+  longitude?: number;
 }
