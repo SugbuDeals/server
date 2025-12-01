@@ -1,4 +1,10 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  InternalServerErrorException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Groq } from 'groq-sdk';
 import { ProductService } from '../product/product.service';
@@ -9,6 +15,7 @@ import { StoreService } from '../store/store.service';
 @Injectable()
 export class AiService implements OnModuleInit {
   private groq: Groq;
+  private readonly logger = new Logger(AiService.name);
 
   constructor(
     private configService: ConfigService,
@@ -20,7 +27,9 @@ export class AiService implements OnModuleInit {
   async onModuleInit() {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
     if (!apiKey) {
-      throw new Error('GROQ_API_KEY is not set in environment variables');
+      throw new InternalServerErrorException(
+        'GROQ_API_KEY is not set in environment variables',
+      );
     }
     this.groq = new Groq({ apiKey });
   }
@@ -29,6 +38,13 @@ export class AiService implements OnModuleInit {
     return (
       this.configService.get<string>('GROQ_MODEL_NAME') || 'llama2-70b-4096'
     );
+  }
+
+  private buildProviderErrorMessage(context: string, error: any): string {
+    const message = error?.message ?? 'Unknown error';
+    const code =
+      error?.response?.status ?? error?.status ?? error?.code ?? undefined;
+    return code ? `${context}: ${message} (code: ${code})` : `${context}: ${message}`;
   }
 
   private async classifyRecommendationIntent(
@@ -44,48 +60,48 @@ Task: Classify the user's request into exactly one of these labels:
 
 User query: "${query}"`;
 
-    const completion = await this.groq.chat.completions.create({
-      model: await this.getModelName(),
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a precise intent classifier. You MUST reply with JSON only, matching the given schema.',
-        },
-        { role: 'user', content: instruction },
-      ],
-      temperature: 0,
-      max_tokens: 50,
-      top_p: 1,
-      stream: false,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'intent_classification',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              intent: {
-                type: 'string',
-                enum: ['product', 'store', 'promotion', 'chat'],
-              },
-              confidence: {
-                type: 'number',
-                minimum: 0,
-                maximum: 1,
-              },
-            },
-            required: ['intent', 'confidence'],
-            additionalProperties: false,
-          },
-        },
-      } as any,
-    });
-
-    const message = completion.choices?.[0]?.message;
-
     try {
+      const completion = await this.groq.chat.completions.create({
+        model: await this.getModelName(),
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a precise intent classifier. You MUST reply with JSON only, matching the given schema.',
+          },
+          { role: 'user', content: instruction },
+        ],
+        temperature: 0,
+        max_tokens: 50,
+        top_p: 1,
+        stream: false,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'intent_classification',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                intent: {
+                  type: 'string',
+                  enum: ['product', 'store', 'promotion', 'chat'],
+                },
+                confidence: {
+                  type: 'number',
+                  minimum: 0,
+                  maximum: 1,
+                },
+              },
+              required: ['intent', 'confidence'],
+              additionalProperties: false,
+            },
+          },
+        } as any,
+      });
+
+      const message = completion.choices?.[0]?.message;
+
       const content: any =
         typeof message?.content === 'string'
           ? JSON.parse(message.content)
@@ -109,10 +125,17 @@ User query: "${query}"`;
       confidence = Math.max(0, Math.min(1, confidence));
 
       return { intent, confidence };
-    } catch (error) {
-      console.error('Error parsing intent classification from Groq:', error);
-      // Safe default
-      return { intent: 'product', confidence: 0.5 };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to classify recommendation intent for query="${query}"`,
+        error?.stack || String(error),
+      );
+      throw new InternalServerErrorException(
+        this.buildProviderErrorMessage(
+          'Failed to classify recommendation intent',
+          error,
+        ),
+      );
     }
   }
 
@@ -134,52 +157,65 @@ User query: "${query}"`;
       };
     }
 
-    // Let the model classify what kind of help the user wants
-    const { intent, confidence } = await this.classifyRecommendationIntent(query);
+    try {
+      // Let the model classify what kind of help the user wants
+      const { intent, confidence } = await this.classifyRecommendationIntent(
+        query,
+      );
 
-    // If confidence is low, fall back to general chat for safety
-    const effectiveIntent = confidence < 0.5 ? 'chat' : intent;
+      // If confidence is low, fall back to general chat for safety
+      const effectiveIntent = confidence < 0.5 ? 'chat' : intent;
 
-    switch (effectiveIntent) {
-      case 'promotion': {
-        const response = await this.generatePromotionRecommendations(query, count);
-        const content = (response as any)?.content ?? '';
-        return {
-          classification: { intent: 'promotion', confidence },
-          recommendation: typeof content === 'string' ? content : String(content ?? ''),
-        };
+      switch (effectiveIntent) {
+        case 'promotion': {
+          const response = await this.generatePromotionRecommendations(query, count);
+          const content = (response as any)?.content ?? '';
+          return {
+            classification: { intent: 'promotion', confidence },
+            recommendation: typeof content === 'string' ? content : String(content ?? ''),
+          };
+        }
+        case 'store': {
+          const response = await this.generateStoreRecommendations(query, count);
+          const content = (response as any)?.content ?? '';
+          return {
+            classification: { intent: 'store', confidence },
+            recommendation: typeof content === 'string' ? content : String(content ?? ''),
+          };
+        }
+        case 'chat': {
+          const response = await this.chat([{ role: 'user', content: query }]);
+          const content = response?.content ?? '';
+          return {
+            classification: { intent: 'chat', confidence },
+            reply: typeof content === 'string' ? content : String(content ?? ''),
+          };
+        }
+        case 'product':
+        default: {
+          // Default: single product recommendation with one similar alternative in one paragraph
+          const result = await this.generateProductRecommendations(
+            query,
+            1,
+            latitude,
+            longitude,
+          );
+          // Preserve existing shape but add explicit classification
+          return {
+            classification: { intent: 'product', confidence },
+            ...result,
+          };
+        }
       }
-      case 'store': {
-        const response = await this.generateStoreRecommendations(query, count);
-        const content = (response as any)?.content ?? '';
-        return {
-          classification: { intent: 'store', confidence },
-          recommendation: typeof content === 'string' ? content : String(content ?? ''),
-        };
-      }
-      case 'chat': {
-        const response = await this.chat([{ role: 'user', content: query }]);
-        const content = response?.content ?? '';
-        return {
-          classification: { intent: 'chat', confidence },
-          reply: typeof content === 'string' ? content : String(content ?? ''),
-        };
-      }
-      case 'product':
-      default: {
-        // Default: single product recommendation with one similar alternative in one paragraph
-        const result = await this.generateProductRecommendations(
-          query,
-          1,
-          latitude,
-          longitude,
-        );
-        // Preserve existing shape but add explicit classification
-        return {
-          classification: { intent: 'product', confidence },
-          ...result,
-        };
-      }
+    } catch (error: any) {
+      this.logger.error(
+        `AI recommendation pipeline failure for query="${query}"`,
+        error?.stack || String(error),
+      );
+      // Align with NestJS error handling by throwing an HttpException subclass
+      throw new InternalServerErrorException(
+        this.buildProviderErrorMessage('AI recommendation pipeline failure', error),
+      );
     }
   }
 
@@ -209,24 +245,42 @@ User query: "${query}"`;
 
   async chat(
     messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
-    options?: Partial<{ temperature: number; max_tokens: number; top_p: number; stream: boolean; model: string }>,
+    options?: Partial<{
+      temperature: number;
+      max_tokens: number;
+      top_p: number;
+      stream: boolean;
+      model: string;
+    }>,
   ) {
-    const completion = await this.groq.chat.completions.create({
-      messages,
-      model: options?.model ?? (await this.getModelName()),
-      temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.max_tokens ?? 1000,
-      top_p: options?.top_p ?? 1,
-      stream: options?.stream ?? false,
-    });
+    try {
+      const completion = await this.groq.chat.completions.create({
+        messages,
+        model: options?.model ?? (await this.getModelName()),
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.max_tokens ?? 1000,
+        top_p: options?.top_p ?? 1,
+        stream: options?.stream ?? false,
+      });
 
-    if ('choices' in completion) {
-      return completion.choices[0]?.message;
+      if ('choices' in completion) {
+        return completion.choices[0]?.message;
+      }
+
+      // If a streaming response was requested, we currently do not support
+      // accumulating streamed chunks in this helper.
+      throw new InternalServerErrorException(
+        'Streaming responses are not supported by chat() helper yet.',
+      );
+    } catch (error: any) {
+      this.logger.error(
+        'AI chat completion failure',
+        error?.stack || String(error),
+      );
+      throw new InternalServerErrorException(
+        this.buildProviderErrorMessage('AI chat completion failure', error),
+      );
     }
-
-    // If a streaming response was requested, we currently do not support
-    // accumulating streamed chunks in this helper.
-    throw new Error('Streaming responses are not supported by chat() helper yet.');
   }
 
   async generateText(prompt: string) {
@@ -269,50 +323,50 @@ You must respond ONLY with a JSON object that matches this TypeScript type:
   "productIds": number[];   // exactly two numeric product IDs: [primary_product_id, similar_product_id]
 }`;
 
-    // Use Groq structured outputs to enforce JSON schema
-    const completion = await this.groq.chat.completions.create({
-      model: await this.getModelName(),
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a knowledgeable shopping assistant who provides thoughtful, personalized product recommendations. You MUST reply with valid JSON only, conforming exactly to the provided schema.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1000,
-      top_p: 1,
-      stream: false,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'product_recommendation',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              recommendation: { type: 'string' },
-              productIds: {
-                type: 'array',
-                items: { type: 'integer' },
-                minItems: 2,
-                maxItems: 2,
-              },
-            },
-            required: ['recommendation', 'productIds'],
-            additionalProperties: false,
-          },
-        },
-      } as any,
-    });
-
-    const message = completion.choices?.[0]?.message;
-
     let recommendationText = '';
     let productIds: number[] = [];
 
     try {
+      // Use Groq structured outputs to enforce JSON schema
+      const completion = await this.groq.chat.completions.create({
+        model: await this.getModelName(),
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a knowledgeable shopping assistant who provides thoughtful, personalized product recommendations. You MUST reply with valid JSON only, conforming exactly to the provided schema.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+        top_p: 1,
+        stream: false,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'product_recommendation',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                recommendation: { type: 'string' },
+                productIds: {
+                  type: 'array',
+                  items: { type: 'integer' },
+                  minItems: 2,
+                  maxItems: 2,
+                },
+              },
+              required: ['recommendation', 'productIds'],
+              additionalProperties: false,
+            },
+          },
+        } as any,
+      });
+
+      const message = completion.choices?.[0]?.message;
+
       // Depending on SDK version, content may already be an object or a JSON string
       const content: any =
         typeof message?.content === 'string'
@@ -320,14 +374,22 @@ You must respond ONLY with a JSON object that matches this TypeScript type:
           : message?.content;
 
       recommendationText =
-        typeof content?.recommendation === 'string' ? content.recommendation : '';
+        typeof content?.recommendation === 'string'
+          ? content.recommendation
+          : '';
       if (Array.isArray(content?.productIds)) {
         productIds = content.productIds
           .map((id: any) => Number(id))
           .filter((id: number) => Number.isFinite(id));
       }
-    } catch (error) {
-      console.error('Error parsing structured product recommendation from Groq:', error);
+    } catch (error: any) {
+      this.logger.error(
+        'AI product recommendation failure',
+        error?.stack || String(error),
+      );
+      throw new InternalServerErrorException(
+        this.buildProviderErrorMessage('AI product recommendation failure', error),
+      );
     }
 
     // Basic validation & normalization of product IDs from model
@@ -535,7 +597,7 @@ Format: Numbered list. For each item include exactly 3 short bullets:
   async getSimilarProducts(productId: number, count: number = 3) {
     const targetProduct = await this.productService.product({ id: productId });
     if (!targetProduct) {
-      throw new Error('Product not found');
+      throw new NotFoundException('Product not found');
     }
 
     const products = await this.productService.products({

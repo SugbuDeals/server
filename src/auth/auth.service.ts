@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from 'generated/prisma';
 import { UsersService } from 'src/users/users.service';
@@ -51,7 +51,8 @@ export class AuthService {
     // Fetch complete user data to get the role
     const userData = await this.usersService.user({ id: user.id });
     if (!userData) {
-      throw new Error('User not found');
+      // User should exist at this point – treat as a 404 for debugging clarity
+      throw new NotFoundException('User not found during login token generation');
     }
 
     const payload = {
@@ -77,35 +78,48 @@ export class AuthService {
     name: string,
     role: UserRole,
   ) {
-    // Check if user already exists
-    const existingUser = await this.usersService.user({ email });
-    if (existingUser) {
-      throw new Error('User already exists');
+    try {
+      // Check if user already exists
+      const existingUser = await this.usersService.user({ email });
+      if (existingUser) {
+        // 409 makes it clear at the HTTP layer this is a conflict
+        throw new ConflictException('A user with this email already exists');
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create the user
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name,
+          role,
+        },
+      });
+
+      // Send welcome notification to consumers (fire-and-forget)
+      if (role === UserRole.CONSUMER) {
+        this.notificationService
+          .notifyConsumerWelcome(user.id)
+          .catch((err) => {
+            console.error('Error creating welcome notification:', err);
+          });
+      }
+
+      // Generate and return access token
+      return this.login(user);
+    } catch (error: any) {
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+
+      // Surface a clear 500 with context while preserving the underlying message
+      const message = error?.message ?? 'Unknown registration error';
+      throw new InternalServerErrorException(
+        `Failed to register user: ${message}`,
+      );
     }
-
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create the user
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        role,
-      },
-    });
-
-    // Send welcome notification to consumers
-    if (role === UserRole.CONSUMER) {
-      this.notificationService
-        .notifyConsumerWelcome(user.id)
-        .catch((err) => {
-          console.error('Error creating welcome notification:', err);
-        });
-    }
-
-    // Generate and return access token
-    return this.login(user);
   }
 }

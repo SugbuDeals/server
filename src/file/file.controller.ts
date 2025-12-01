@@ -53,7 +53,9 @@ export class FileController {
 
     if (!existsSync(filePath)) {
       this.logger.error(`File not found: ${filePath}`);
-      return res.status(404).json({ message: 'File not found' });
+      // Let Nest handle the 404 response using its built-in exception layer
+      // so that global filters and interceptors still apply.
+      throw new NotFoundException('File not found');
     }
 
     this.logger.log(`Serving file: ${filePath}`);
