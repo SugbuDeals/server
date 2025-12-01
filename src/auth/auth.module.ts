@@ -10,6 +10,7 @@ import { LocalAuthGuard } from './local-auth.guard';
 import { LocalAuthStrategy } from './local-auth.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { NotificationModule } from 'src/notification/notification.module';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { NotificationModule } from 'src/notification/notification.module';
     LocalAuthGuard,
     JwtAuthStrategy,
     JwtAuthGuard,
+    RolesGuard,
   ],
   controllers: [AuthController],
 })

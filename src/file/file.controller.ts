@@ -29,6 +29,9 @@ import { existsSync } from 'fs';
 import { UPLOAD_PATH } from './file.module'; // Import the shared constant
 import { join } from 'path';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { UserRole } from 'generated/prisma';
 
 @ApiTags('Files')
 @Controller('files')
@@ -149,7 +152,7 @@ export class FileController {
   }
 
   @Delete('clear')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Clear all uploaded files' })
   @ApiResponse({
@@ -160,6 +163,7 @@ export class FileController {
     status: 500,
     description: 'Error clearing files',
   })
+  @Roles(UserRole.ADMIN)
   async clearAllFiles() {
     try {
       if (!existsSync(this.uploadPath)) {

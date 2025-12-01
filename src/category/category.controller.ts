@@ -20,6 +20,9 @@ import { CategoryService } from './category.service';
 import { CreateCategoryDTO } from './dto/createCategory.dto';
 import { UpdateCategoryDTO } from './dto/updateCategory.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { UserRole } from 'generated/prisma';
 
 @ApiTags('Categories')
 @Controller('category')
@@ -46,20 +49,22 @@ export class CategoryController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a category' })
   @ApiBody({ type: CreateCategoryDTO })
+  @Roles(UserRole.ADMIN)
   async createCategory(@Body() createCategoryDTO: CreateCategoryDTO) {
     return this.categoryService.createCategory(createCategoryDTO);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateCategoryDTO })
+  @Roles(UserRole.ADMIN)
   async updateCategory(
     @Param('id') id: string,
     @Body() updateCategoryDTO: UpdateCategoryDTO,
@@ -71,11 +76,12 @@ export class CategoryController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Category deleted' })
+  @Roles(UserRole.ADMIN)
   async deleteCategory(@Param('id') id: string) {
     return this.categoryService.deleteCategory({ id: Number(id) });
   }

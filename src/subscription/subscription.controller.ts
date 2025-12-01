@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -39,6 +40,8 @@ import {
   UserSubscription,
 } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
 
 @ApiTags('Subscriptions')
 @Controller('subscription')
@@ -155,8 +158,8 @@ export class SubscriptionController {
       requestingUser.role !== UserRole.ADMIN &&
       requestingUser.sub !== userIdNum
     ) {
-      throw new UnauthorizedException(
-        'You are not authorized to view this subscription',
+      throw new ForbiddenException(
+        'You are not allowed to view subscriptions for other users',
       );
     }
 
@@ -195,8 +198,8 @@ export class SubscriptionController {
     }
 
     if (!subscription.isActive && requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
-        'You are not authorized to view this subscription',
+      throw new ForbiddenException(
+        'You are not allowed to view inactive subscriptions',
       );
     }
 
@@ -204,7 +207,8 @@ export class SubscriptionController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a subscription' })
   @ApiBody({ type: CreateSubscriptionDTO })
@@ -215,13 +219,6 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Body() createSubscriptionDTO: CreateSubscriptionDTO,
   ): Promise<Subscription> {
-    const requestingUser = req.user;
-    if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
-        'Only admins can create subscription plans',
-      );
-    }
-
     const data: Prisma.SubscriptionCreateInput = {
       name: createSubscriptionDTO.name,
       description: createSubscriptionDTO.description,
@@ -242,7 +239,8 @@ export class SubscriptionController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a subscription' })
   @ApiParam({
@@ -260,7 +258,6 @@ export class SubscriptionController {
     @Param('id') id: string,
     @Body() updateSubscriptionDTO: UpdateSubscriptionDTO,
   ): Promise<Subscription> {
-    const requestingUser = req.user;
     const subscriptionId = Number(id);
 
     if (!subscriptionId || Number.isNaN(subscriptionId)) {
@@ -273,12 +270,6 @@ export class SubscriptionController {
 
     if (!existingSubscription) {
       throw new BadRequestException('Subscription not found');
-    }
-
-    if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
-        'Only admins can update subscription plans',
-      );
     }
 
     const data: Prisma.SubscriptionUpdateInput = {
@@ -304,7 +295,8 @@ export class SubscriptionController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a subscription' })
   @ApiParam({
@@ -319,7 +311,6 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
   ): Promise<Subscription> {
-    const requestingUser = req.user;
     const subscriptionId = Number(id);
 
     if (!subscriptionId || Number.isNaN(subscriptionId)) {
@@ -335,19 +326,14 @@ export class SubscriptionController {
       throw new BadRequestException('Subscription not found');
     }
 
-    if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
-        'Only admins can delete subscription plans',
-      );
-    }
-
     return this.subscriptionService.deletePlan({
       where: { id: subscriptionId },
     });
   }
 
   @Post('retailer/join')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.RETAILER)
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Join a subscription (Retailer only)',
@@ -363,14 +349,6 @@ export class SubscriptionController {
     @Body() joinSubscriptionDTO: JoinSubscriptionDTO,
   ): Promise<UserSubscription> {
     const requestingUser = req.user;
-
-    // Only retailers can join subscriptions
-    if (requestingUser.role !== UserRole.RETAILER) {
-      throw new UnauthorizedException(
-        'Only retailers can join subscriptions',
-      );
-    }
-
     if (!joinSubscriptionDTO.subscriptionId || Number.isNaN(joinSubscriptionDTO.subscriptionId)) {
       throw new BadRequestException('Invalid subscription ID');
     }
@@ -382,7 +360,8 @@ export class SubscriptionController {
   }
 
   @Patch('retailer/update')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.RETAILER)
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Update current subscription (Retailer only)',
@@ -398,14 +377,6 @@ export class SubscriptionController {
     @Body() updateRetailerSubscriptionDTO: UpdateRetailerSubscriptionDTO,
   ): Promise<UserSubscription> {
     const requestingUser = req.user;
-
-    // Only retailers can update their subscriptions
-    if (requestingUser.role !== UserRole.RETAILER) {
-      throw new UnauthorizedException(
-        'Only retailers can update their subscriptions',
-      );
-    }
-
     if (!updateRetailerSubscriptionDTO.subscriptionId || Number.isNaN(updateRetailerSubscriptionDTO.subscriptionId)) {
       throw new BadRequestException('Invalid subscription ID');
     }
@@ -417,7 +388,8 @@ export class SubscriptionController {
   }
 
   @Post('retailer/cancel')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.RETAILER)
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Cancel current subscription (Retailer only)',
@@ -431,21 +403,14 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
   ): Promise<UserSubscription> {
     const requestingUser = req.user;
-
-    // Only retailers can cancel their subscriptions
-    if (requestingUser.role !== UserRole.RETAILER) {
-      throw new UnauthorizedException(
-        'Only retailers can cancel their subscriptions',
-      );
-    }
-
     return this.subscriptionService.cancelRetailerSubscription(
       requestingUser.sub,
     );
   }
 
   @Get('admin/analytics')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Get subscription analytics (Admin only)',
@@ -461,14 +426,6 @@ export class SubscriptionController {
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
   ): Promise<SubscriptionAnalyticsDTO> {
     const requestingUser = req.user;
-
-    // Only admins can access analytics
-    if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException(
-        'Only admins can access subscription analytics',
-      );
-    }
-
     return this.subscriptionService.getAnalytics();
   }
 }

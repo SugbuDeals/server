@@ -15,12 +15,15 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
-  ApiBearerAuth
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { PromotionService } from './promotion.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { UserRole } from 'generated/prisma';
 
 @ApiTags('Promotions')
 @Controller('promotions')
@@ -28,10 +31,11 @@ export class PromotionController {
   constructor(private readonly promotionService: PromotionService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiBody({ type: CreatePromotionDto })
+  @Roles(UserRole.ADMIN)
   create(@Body() createPromotionDto: CreatePromotionDto) {
     return this.promotionService.create(createPromotionDto);
   }
@@ -65,11 +69,12 @@ export class PromotionController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdatePromotionDto })
+  @Roles(UserRole.ADMIN)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updatePromotionDto: UpdatePromotionDto,
@@ -78,11 +83,12 @@ export class PromotionController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Promotion deleted' })
+  @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.promotionService.remove(id);
   }

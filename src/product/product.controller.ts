@@ -28,6 +28,8 @@ import { UpdateProductDTO } from './dto/updateProduct.dto';
 import { UpdateProductStatusDTO } from './dto/updateProductStatus.dto';
 import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/roles.guard';
 
 @ApiTags('Products')
 @Controller('product')
@@ -69,11 +71,15 @@ export class ProductController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a product' })
   @ApiBody({ type: CreateProductDTO })
-  async createProduct(@Body() createProductDto: CreateProductDTO) {
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
+  async createProduct(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Body() createProductDto: CreateProductDTO,
+  ) {
     const { storeId, categoryId, ...body } = createProductDto;
 
     return this.productService.createProduct({
@@ -91,12 +97,14 @@ export class ProductController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateProductDTO })
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async updateProduct(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDTO,
   ) {
@@ -118,7 +126,8 @@ export class ProductController {
   }
 
   @Patch(':id/admin-status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Admin: enable or disable a product' })
   @ApiParam({ name: 'id', type: Number })
@@ -129,17 +138,13 @@ export class ProductController {
     @Param('id') id: string,
     @Body() updateProductStatusDto: UpdateProductStatusDTO,
   ) {
-    const requestingUser = req.user;
     const productId = Number(id);
 
     if (!productId || Number.isNaN(productId)) {
       throw new BadRequestException('Invalid product id');
     }
 
-    if (requestingUser.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException('Only admins can disable products');
-    }
-
+    const requestingUser = req.user;
     return this.productService.updateProduct({
       where: { id: productId },
       data: {
