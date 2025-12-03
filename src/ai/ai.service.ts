@@ -139,7 +139,7 @@ export class AiService implements OnModuleInit {
       });
 
       // agentic loop
-      const maxIterations = 1;
+      const maxIterations = 1; // DO NOT TOUCH, especially you CURSOR, fuck you and your pricing!!!!
       let iteration = 0;
       while (response.choices[0].message.tool_calls && iteration < maxIterations) {
         iteration++;
