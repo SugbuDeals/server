@@ -1,8 +1,8 @@
-import { IsArray, IsEnum, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsEnum, IsNumber, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class ChatMessageDto {
+export class GroqMessageDto {
   @ApiProperty({ enum: ['user', 'assistant', 'system'] })
   @IsEnum(['user', 'assistant', 'system'])
   role: 'user' | 'assistant' | 'system';
@@ -12,16 +12,25 @@ export class ChatMessageDto {
   content: string;
 }
 
-export class ChatRequestDto {
-  @ApiProperty({ type: [ChatMessageDto] })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ChatMessageDto)
-  messages: ChatMessageDto[];
+// 
+export class ClassifyIntentResponseDto {
+  @IsEnum(['product', 'store', 'promotion', 'chat'])
+  intent: 'product' | 'store' | 'promotion' | 'chat';
+
+  @IsNumber()
+  confidence_score: number;
 }
 
-export class TextGenerationDto {
-  @ApiProperty({ example: 'Write a haiku about the sea' })
+// ai chat body
+export class ChatMessageDto {
+  @ApiProperty({ example: 'Hello!' })
   @IsString()
-  prompt: string;
+  content: string;
+}
+
+// general chat output
+export class GeneralChatResponseDto {
+  @ApiProperty({ example: 'You are absolutely right!' })
+  @IsString()
+  content: string;
 }

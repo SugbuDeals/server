@@ -1,11 +1,7 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService } from './ai.service';
-import { ChatRequestDto, TextGenerationDto } from './dto/chat.dto';
-import {
-  FreeformRecommendationDto,
-  SimilarProductsDto,
-} from './dto/recommendation.dto';
+import { ChatMessageDto, GroqMessageDto } from './dto/chat.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @ApiTags('AI')
@@ -13,40 +9,19 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
+  @Post('intent')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiBody({ type: ChatMessageDto })
+  async classifyIntent(@Body() chatMessageDto: GroqMessageDto) {
+    return this.aiService.classifyIntent(chatMessageDto);
+  }
+
   @Post('chat')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiBody({ type: ChatRequestDto })
-  async chat(@Body() chatRequest: ChatRequestDto) {
-    return this.aiService.chat(chatRequest.messages);
-  }
-
-  @Post('agent-chat')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('bearer')
-  @ApiBody({ type: ChatRequestDto })
-  async agentChat(@Body() chatRequest: ChatRequestDto) {
-    return this.aiService.agentChat(chatRequest.messages);
-  }
-
-  @Post('generate')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('bearer')
-  @ApiBody({ type: TextGenerationDto })
-  async generateText(@Body() request: TextGenerationDto) {
-    return this.aiService.generateText(request.prompt);
-  }
-
-  @Post('recommendations')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('bearer')
-  @ApiBody({ type: FreeformRecommendationDto })
-  async getRecommendations(@Body() request: FreeformRecommendationDto) {
-    return this.aiService.getRecommendationsFromQuery(
-      request.query,
-      request.count,
-      request.latitude,
-      request.longitude,
-    );
+  @ApiBody({ type: ChatMessageDto })
+  async chat(@Body() chatMessageDto: ChatMessageDto) {
+    return this.aiService.chat(chatMessageDto);
   }
 }
