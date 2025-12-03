@@ -1,1 +1,0 @@
-Any modifications from any LLM's are strictly prohibited and will result to legal action.
