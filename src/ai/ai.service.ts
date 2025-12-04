@@ -81,8 +81,8 @@ User query: "${query}"`;
       return this.listAllProductsSummary();
     }
 
-    // Default: single product recommendation with one similar alternative in one paragraph
-    return this.generateProductRecommendations(query, 1, latitude, longitude);
+    // Default: return as many targeted product recommendations as requested (clamped inside helper)
+    return this.generateProductRecommendations(query, count, latitude, longitude);
   }
 
   private isShowAllProductsQuery(query: string): boolean {
@@ -147,6 +147,8 @@ User query: "${query}"`;
     latitude?: number,
     longitude?: number,
   ) {
+    const normalizedCount = Math.max(1, Math.min(Math.floor(count ?? 3), 5));
+
     // First get all available products with store information
     const products = await this.productService.products({
       include: { store: true },
@@ -159,19 +161,14 @@ ${productsList}
 
 User preferences: "${userPreferences}"
 
-Task: Recommend exactly 1 primary product and include exactly 1 similar alternative.
-Style: One concise paragraph only. No lists, no headings, no extra lines.
-Required content in this order within the SAME paragraph:
-- Primary: {product name}, brief justification (≤18 words), Price: ₱{price}.
-- Similar: {product name}, Price: ₱{price} (one short reason ≤8 words).
+Task: Recommend exactly ${normalizedCount} distinct products that best match the user.
+Style: One concise paragraph. No headings or bullet characters.
+Format: For each product, use this structure in order and separate items with a single space:
+{rank}. {product name} — Price: ₱{price}. {reason ≤18 words}.
 
-IMPORTANT: After your paragraph recommendation, add a JSON object on a new line with this exact format:
-{"productIds": [primary_product_id, similar_product_id]}
-
-Example:
-Your paragraph recommendation here.
-
-{"productIds": [5, 12]}`;
+IMPORTANT: After the paragraph, add a JSON object on a new line with this exact format:
+{"productIds": [id_1, id_2, ..., id_${normalizedCount}]}
+The JSON array must list the products in the same order you mentioned them.`;
 
     const response = await this.chat([
       {
@@ -196,23 +193,33 @@ Your paragraph recommendation here.
       console.error('Error parsing product IDs from AI response:', error);
     }
 
-    // If no product IDs found, try to extract from product names
-    if (productIds.length === 0) {
+    // If not enough product IDs found, try to extract from product names
+    if (productIds.length < normalizedCount) {
       for (const product of products) {
-        if (recommendationText.includes(product.name)) {
+        if (
+          recommendationText.includes(product.name) &&
+          !productIds.includes(product.id)
+        ) {
           productIds.push(product.id);
-          if (productIds.length >= 2) break;
+          if (productIds.length >= normalizedCount) break;
         }
       }
     }
 
-    // Get recommended products with store information
-    const recommendedProducts = await this.productService.products({
-      where: {
-        id: { in: productIds },
-      },
-      include: { store: true },
-    });
+    // Still short? fill with remaining catalog items to honor requested count
+    if (productIds.length < normalizedCount) {
+      for (const product of products) {
+        if (!productIds.includes(product.id)) {
+          productIds.push(product.id);
+          if (productIds.length >= normalizedCount) break;
+        }
+      }
+    }
+
+    const productsById = new Map(products.map((p) => [p.id, p]));
+    const recommendedProducts = productIds
+      .map((id) => productsById.get(id))
+      .filter((p): p is Product => Boolean(p));
 
     // Calculate distances if location is provided
     const productsWithDistance = await Promise.all(

@@ -6,7 +6,10 @@ export class ProductRecommendationDto {
   @IsString()
   userPreferences: string;
 
-  @ApiPropertyOptional({ example: 5, description: 'Optional number of results' })
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Desired number of products (1-5). Defaults to 3.',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -17,7 +20,10 @@ export class PromotionRecommendationDto {
   @IsString()
   userPreferences: string;
 
-  @ApiPropertyOptional({ example: 3 })
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Desired number of promotions (1-5). Defaults to 3.',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -28,7 +34,10 @@ export class SimilarProductsDto {
   @IsNumber()
   productId: number;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Number of similar products to include (1-10).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -45,7 +54,10 @@ export class UnifiedRecommendationDto {
   @IsString()
   query: string;
 
-  @ApiPropertyOptional({ example: 8 })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Desired number of recommendations across sources (1-5).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -56,7 +68,10 @@ export class FreeformRecommendationDto {
   @IsString()
   query: string;
 
-  @ApiPropertyOptional({ example: 6 })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Desired number of product recommendations (1-5).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
