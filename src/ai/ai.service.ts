@@ -32,21 +32,7 @@ export class AiService implements OnModuleInit {
   }
 
   private async classifyRecommendationIntent(query: string): Promise<'product' | 'store' | 'promotion'> {
-    const instruction = `Task: Classify the user's request into exactly one of these labels:
-product | store | promotion
-
-Rules:
-- Output only the single label, lowercase, no punctuation or extra text.
-- "promotion" includes deals, discounts, vouchers, coupons, sales.
-- "store" refers to shops, sellers, merchants, brands, places to buy.
-- "product" refers to specific items, goods, categories, or features.
-
-Examples:
-"Show me discounts on coffee" -> promotion
-"Best shops for laptops" -> store
-"Recommend a budget smartphone" -> product
-
-User query: "${query}"`;
+    const instruction = `You are an AI product recommendation engine designed to accurately interpret and respond to consumer product requests.Your task is to focus solely on the products specifically requested by the user, ensuring that you display only those items that are directly related to the query.1.When a user requests a specific type of product (e.g., "smartwatch"), respond exclusively with items that fall under that exact category.Avoid displaying products from adjacent categories (e.g., do not show phones when the user requests watches).2.If the user requests multiple types of products (e.g., "phones and clothing"), respond with items strictly related to those categories only.Do not include items from unrelated categories (e.g., do not show shoes if the user requests clothing).3.If a requested product is not found in the inventory, inform the user that the product is not available and return an empty response, avoiding any unrelated suggestions.4.Ensure clarity and relevance in your responses, maintaining a user-friendly experience.Example Format: - User Request: "Find me a smartwatch." - Response: [List of smartwatches, if available]- User Request: "Show me phones and clothing." - Response: [List of phones and clothing items, if available]- User Request: "Find me a specific product not in inventory." - Response: "This product is not found." [Return empty response]"${query}"`;
 
     const res = await this.chat(
       [
@@ -143,8 +129,8 @@ User query: "${query}"`;
   }
 
   /**
-   * Apply simple intent-based filtering so obvious non-gadget items
-   * (e.g. clothes) are removed when the user clearly asks for gadgets/tech.
+   * Apply simple intent-based filtering to ensure only products of the
+   * requested type (e.g., watches, not phones) are passed to the AI.
    */
   private filterProductsByIntent(
     userPreferences: string,
@@ -152,59 +138,481 @@ User query: "${query}"`;
   ): Array<Product & { category?: { name: string | null } }> {
     const q = (userPreferences || '').toLowerCase();
 
-    const gadgetKeywords = [
-      'gadget',
-      'device',
+    // 1. Define granular, semantic keyword buckets
+    const phoneKeywords = [
       'phone',
+      'phones',
+      'smartphone',
+      'smartphones',
+      'mobile',
+      'mobiles',
+      'handset',
+      'android phone',
+      'ios phone',
+      'cellphone',
+      'cell phone',
+    ];
+
+    const laptopKeywords = [
       'laptop',
-      'tablet',
+      'laptops',
+      'notebook',
+      'ultrabook',
+      'macbook',
+      'chromebook',
       'computer',
       'pc',
+      'desktop',
+      'workstation',
+    ];
+
+    const watchKeywords = [
       'watch',
-      'smart',
+      'watches',
+      'smartwatch',
+      'smart watch',
+      'timer',
+      'timepiece',
+      'wristwatch',
+      'fitness band',
+      'fitness tracker',
+    ];
+
+    const generalGadgetKeywords = [
+      // For broader tech items
+      'device',
+      'devices',
+      'tablet',
+      'tablets',
       'camera',
+      'cameras',
       'tv',
+      'tvs',
+      'television',
       'monitor',
+      'monitors',
       'electronics',
       'tech',
+      'speaker',
+      'speakers',
+      'headphone',
+      'headphones',
+      'earbud',
+      'earbuds',
+      'headset',
+      'console',
+      'playstation',
+      'xbox',
+      'nintendo',
+      'router',
+      'modem',
+      'fan',
+      'smart home',
+      'smart device',
     ];
 
     const clothingKeywords = [
       'clothes',
       'clothing',
+      'clothe',
+      'cloth',
       'apparel',
       'fashion',
       'outfit',
       'suit',
+      'suits',
       'shirt',
+      't-shirt',
+      'tshirt',
+      'tee',
+      'top',
+      'blouse',
       'pants',
+      'trousers',
+      'jeans',
+      'shorts',
       'jacket',
       'coat',
+      'hoodie',
+      'sweater',
+      'cardigan',
       'dress',
       'skirt',
-      'shoe',
-      'sandal',
+      'blazer',
     ];
 
-    const wantsGadgets = gadgetKeywords.some((k) => q.includes(k));
-    const explicitlyClothes = clothingKeywords.some((k) => q.includes(k));
+    const footwearKeywords = [
+      'shoe',
+      'shoes',
+      'sneaker',
+      'sneakers',
+      'sandal',
+      'sandals',
+      'boot',
+      'boots',
+      'heel',
+      'heels',
+      'flip-flops',
+      'flip flops',
+    ];
 
-    if (!wantsGadgets || explicitlyClothes) {
-      // Let AI see the full catalog if the user didn't clearly ask for gadgets
-      // or explicitly mentioned clothing/fashion.
+    const jewelryKeywords = [
+      'necklace',
+      'necklaces',
+      'bracelet',
+      'bracelets',
+      'ring',
+      'rings',
+      'earring',
+      'earrings',
+      'jewelry',
+      'jewelery',
+      'pendant',
+      'anklet',
+      'brooch',
+    ];
+
+    const bagKeywords = [
+      'bag',
+      'bags',
+      'purse',
+      'purses',
+      'wallet',
+      'wallets',
+      'backpack',
+      'backpacks',
+      'satchel',
+      'handbag',
+      'hand bag',
+      'tote',
+      'tote bag',
+    ];
+
+    // Additional high-level types to improve intent matching
+    const beautyKeywords = [
+      'beauty',
+      'cosmetic',
+      'cosmetics',
+      'makeup',
+      'lipstick',
+      'lip gloss',
+      'foundation',
+      'concealer',
+      'mascara',
+      'eyeliner',
+      'blush',
+      'highlighter',
+      'bronzer',
+    ];
+
+    const skincareKeywords = [
+      'skincare',
+      'skin care',
+      'moisturizer',
+      'serum',
+      'cleanser',
+      'toner',
+      'sunscreen',
+      'sunblock',
+      'face wash',
+      'lotion',
+      'cream',
+    ];
+
+    const homeKeywords = [
+      'furniture',
+      'sofa',
+      'couch',
+      'table',
+      'desk',
+      'chair',
+      'stool',
+      'bed',
+      'mattress',
+      'wardrobe',
+      'cabinet',
+      'shelf',
+      'bookshelf',
+      'lamp',
+      'lighting',
+      'rug',
+      'carpet',
+      'curtain',
+      'curtains',
+      'home decor',
+      'decor',
+    ];
+
+    const applianceKeywords = [
+      'appliance',
+      'appliances',
+      'fridge',
+      'refrigerator',
+      'freezer',
+      'microwave',
+      'oven',
+      'stove',
+      'cooktop',
+      'dishwasher',
+      'washer',
+      'washing machine',
+      'dryer',
+      'vacuum',
+      'vacuum cleaner',
+      'air conditioner',
+      'ac unit',
+      'aircon',
+    ];
+
+    const toyKeywords = [
+      'toy',
+      'toys',
+      'doll',
+      'lego',
+      'puzzle',
+      'board game',
+      'board games',
+      'action figure',
+      'action figures',
+      'rc car',
+      'remote control car',
+      'plush',
+      'stuffed animal',
+    ];
+
+    const sportsKeywords = [
+      'sport',
+      'sports',
+      'ball',
+      'basketball',
+      'football',
+      'soccer',
+      'volleyball',
+      'tennis',
+      'racket',
+      'bat',
+      'helmet',
+      'jersey',
+      'gym',
+      'fitness equipment',
+      'dumbbell',
+      'treadmill',
+      'yoga mat',
+    ];
+
+    const bookKeywords = [
+      'book',
+      'books',
+      'novel',
+      'novels',
+      'comic',
+      'comics',
+      'manga',
+      'textbook',
+      'magazine',
+    ];
+
+    const groceryKeywords = [
+      'grocery',
+      'groceries',
+      'food',
+      'snack',
+      'snacks',
+      'beverage',
+      'drink',
+      'drinks',
+      'juice',
+      'soda',
+      'water bottle',
+      'cereal',
+      'rice',
+      'pasta',
+      'sauce',
+      'coffee',
+      'tea',
+    ];
+
+    const petKeywords = [
+      'pet',
+      'pets',
+      'dog',
+      'dogs',
+      'cat',
+      'cats',
+      'pet food',
+      'dog food',
+      'cat food',
+      'pet toy',
+      'pet toys',
+      'leash',
+      'collar',
+      'litter',
+      'aquarium',
+      'fish tank',
+    ];
+
+    // 2. Identify requested groups based on user query
+    const phoneBrandKeywords = [
+      'redmi',
+      'xiaomi',
+      'samsung',
+      'iphone',
+      'apple',
+      'oppo',
+      'vivo',
+      'huawei',
+      'oneplus',
+      'nokia',
+      'motorola',
+      'realme',
+    ];
+
+    // Detect negative phrasing like "except for phones", "without phones", etc.
+    const excludePhones = /(except|without|excluding|other than|not including)[^\.]*phone[s]?/i.test(
+      q,
+    );
+
+    const wantsPhones =
+      !excludePhones &&
+      (phoneKeywords.some((k) => q.includes(k)) ||
+        (phoneBrandKeywords.some((k) => q.includes(k)) && q.includes('phone')));
+    const wantsLaptops = laptopKeywords.some((k) => q.includes(k));
+    const wantsWatches = watchKeywords.some((k) => q.includes(k));
+    const wantsGeneralGadgets = generalGadgetKeywords.some((k) => q.includes(k));
+
+    const wantsClothing = clothingKeywords.some((k) => q.includes(k));
+    const wantsFootwear = footwearKeywords.some((k) => q.includes(k));
+    const wantsJewelry = jewelryKeywords.some((k) => q.includes(k));
+    const wantsBags = bagKeywords.some((k) => q.includes(k));
+    const wantsBeauty = beautyKeywords.some((k) => q.includes(k));
+    const wantsSkincare = skincareKeywords.some((k) => q.includes(k));
+    const wantsHome = homeKeywords.some((k) => q.includes(k));
+    const wantsAppliances = applianceKeywords.some((k) => q.includes(k));
+    const wantsToys = toyKeywords.some((k) => q.includes(k));
+    const wantsSports = sportsKeywords.some((k) => q.includes(k));
+    const wantsBooks = bookKeywords.some((k) => q.includes(k));
+    const wantsGroceries = groceryKeywords.some((k) => q.includes(k));
+    const wantsPets = petKeywords.some((k) => q.includes(k));
+
+    const requestedGroups = new Set<string>();
+    if (wantsPhones) requestedGroups.add('phones');
+    if (wantsLaptops) requestedGroups.add('laptops');
+    if (wantsWatches) requestedGroups.add('watches');
+    if (wantsGeneralGadgets) requestedGroups.add('general_gadgets');
+    if (wantsClothing) requestedGroups.add('clothing');
+    if (wantsFootwear) requestedGroups.add('footwear');
+    if (wantsJewelry) requestedGroups.add('jewelry');
+    if (wantsBags) requestedGroups.add('bags');
+    if (wantsBeauty) requestedGroups.add('beauty');
+    if (wantsSkincare) requestedGroups.add('skincare');
+    if (wantsHome) requestedGroups.add('home');
+    if (wantsAppliances) requestedGroups.add('appliances');
+    if (wantsToys) requestedGroups.add('toys');
+    if (wantsSports) requestedGroups.add('sports');
+    if (wantsBooks) requestedGroups.add('books');
+    if (wantsGroceries) requestedGroups.add('groceries');
+    if (wantsPets) requestedGroups.add('pets');
+
+    // Helper to classify whether a product should be treated as a phone
+    const isPhoneProduct = (combined: string): boolean =>
+      phoneKeywords.some((k) => combined.includes(k)) ||
+      phoneBrandKeywords.some((k) => combined.includes(k));
+
+    // If the user only expressed a negative preference like "except phones",
+    // and no positive groups, then show everything EXCEPT phones.
+    if (requestedGroups.size === 0 && excludePhones) {
+      return products.filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const catName = (p.category?.name || '').toLowerCase();
+        const combined = `${name} ${desc} ${catName}`;
+        return !isPhoneProduct(combined);
+      });
+    }
+
+    // If the user didn't clearly express any preference (e.g., asked "best prices"), let the AI see everything
+    if (requestedGroups.size === 0) {
       return products;
     }
 
+    // 3. Filter products: keep only those that match one of the requested groups
     return products.filter((p) => {
       const name = (p.name || '').toLowerCase();
       const desc = (p.description || '').toLowerCase();
       const catName = (p.category?.name || '').toLowerCase();
+      const combined = `${name} ${desc} ${catName}`;
 
-      const looksClothing = clothingKeywords.some(
-        (k) => catName.includes(k) || name.includes(k) || desc.includes(k),
-      );
+      const productGroups: string[] = [];
 
-      return !looksClothing;
+      // Assign the product to its relevant groups
+      if (
+        phoneKeywords.some((k) => combined.includes(k)) ||
+        (phoneBrandKeywords.some((k) => combined.includes(k)) &&
+          requestedGroups.has('phones'))
+      ) {
+        productGroups.push('phones');
+      }
+      if (laptopKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('laptops');
+      }
+      if (watchKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('watches');
+      }
+      if (generalGadgetKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('general_gadgets');
+      }
+      if (clothingKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('clothing');
+      }
+      if (footwearKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('footwear');
+      }
+      if (jewelryKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('jewelry');
+      }
+      if (bagKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('bags');
+      }
+      if (beautyKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('beauty');
+      }
+      if (skincareKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('skincare');
+      }
+      if (homeKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('home');
+      }
+      if (applianceKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('appliances');
+      }
+      if (toyKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('toys');
+      }
+      if (sportsKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('sports');
+      }
+      if (bookKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('books');
+      }
+      if (groceryKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('groceries');
+      }
+      if (petKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('pets');
+      }
+
+      if (productGroups.length === 0) {
+        // If the product doesn't fit any defined group, exclude it since the user had a specific request
+        return false;
+      }
+
+      // If the user explicitly excluded phones, drop anything classified as a phone
+      if (excludePhones && isPhoneProduct(combined)) {
+        return false;
+      }
+
+      // Keep the product if it matches at least one of the *specifically requested* groups
+      return productGroups.some((g) => requestedGroups.has(g));
     });
   }
 
@@ -223,15 +631,33 @@ User query: "${query}"`;
       include: { store: true, category: true },
     });
 
+    // Filtering happens here to keep only relevant products!
     const products = this.filterProductsByIntent(userPreferences, allProducts);
+    
+    // Check if any products remain after filtering. Return an empty structure if not found.
+    if (!products.length) {
+      return {
+        recommendation: 'The requested products could not be found.',
+        products: [],
+      };
+    }
+
     const productsList = await this.formatProductsForAI(products);
 
-    const prompt = `Context — products:
+    const prompt = `Context — products (this is the ONLY catalog you are allowed to use):
 ${productsList}
 
 User preferences: "${userPreferences}"
 
 Task: Recommend exactly ${normalizedCount} distinct products that best match the user.
+
+Hard rules:
+- You MUST ONLY recommend products that appear in the context list above. Do NOT invent new products or brands.
+- The context list is already filtered based on the user request (for example: only phones, only clothing, or "except phones").
+- NEVER recommend or mention products that do not appear in the context.
+- If multiple categories are requested (e.g., phones AND clothing), include only items that match at least one of those types as reflected in the context.
+- If the user excluded a type (e.g., "except phones"), do NOT mention or recommend those excluded types at all.
+
 ${styleInstruction}
 Format: For each product, use this structure in order and separate items with a single space:
 ${reasonTemplate}
@@ -243,17 +669,20 @@ IMPORTANT: After the paragraph, add a JSON object on a new line with this exact 
 {"productIds": [id_1, id_2, ..., id_${normalizedCount}]}
 The JSON array must list the products in the same order you mentioned them.`;
 
-    const response = await this.chat([
-      {
-        role: 'system',
-        content:
-          'You are a knowledgeable shopping assistant who provides thoughtful, personalized product recommendations. Always include the JSON object with productIds after your recommendation.',
-      },
-      { role: 'user', content: prompt },
-    ]);
+    const response = await this.chat(
+      [
+        {
+          role: 'system',
+          content:
+            'You are a highly precise shopping assistant. You MUST strictly obey the rules given in the user message, and you MUST only recommend products that appear in the provided context list. Never hallucinate or introduce products that are not in the context. Always include the JSON object with productIds after your recommendation.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      { temperature: 0.4 },
+    );
 
     const recommendationText = response?.content || '';
-    
+
     // Extract product IDs from JSON in the response
     let productIds: number[] = [];
     try {
@@ -289,8 +718,13 @@ The JSON array must list the products in the same order you mentioned them.`;
       }
     }
 
+    // Deduplicate while preserving order and limit to normalizedCount
+    const uniqueProductIds = Array.from(
+      new Set(productIds),
+    ).slice(0, normalizedCount);
+
     const productsById = new Map(products.map((p) => [p.id, p]));
-    const recommendedProducts = productIds
+    const recommendedProducts = uniqueProductIds
       .map((id) => productsById.get(id))
       .filter((p): p is Product => Boolean(p));
 
@@ -313,7 +747,10 @@ The JSON array must list the products in the same order you mentioned them.`;
     let highlight: string | undefined;
     let elaboration: string | undefined;
 
-    const rationaleMatch = recommendationSection.match(/Recommendation rationale:\s*([\s\S]*?)(?:\n\s*\n|Elaboration:|$)/i);
+    const rationaleMatch =
+      recommendationSection.match(
+        /Recommendation rationale:\s*([\s\S]*?)(?:\n\s*\n|Elaboration:|$)/i,
+      );
     if (rationaleMatch) {
       recommendationBody = recommendationSection
         .slice(0, rationaleMatch.index)
@@ -321,7 +758,8 @@ The JSON array must list the products in the same order you mentioned them.`;
       highlight = rationaleMatch[1].trim();
     }
 
-    const elaborationMatch = recommendationSection.match(/Elaboration:\s*([\s\S]*)$/i);
+    const elaborationMatch =
+      recommendationSection.match(/Elaboration:\s*([\s\S]*)$/i);
     if (elaborationMatch) {
       elaboration = elaborationMatch[1].trim();
       if (!rationaleMatch) {
@@ -331,8 +769,43 @@ The JSON array must list the products in the same order you mentioned them.`;
       }
     }
 
+    // If the AI indicates the requested product does not exist, or we have no
+    // concrete products to show, override with a clear "not available" message
+    const notFoundHints = [
+      /no\b.*available/i,
+      /not available/i,
+      /could not find/i,
+      /won'?t find/i,
+      /\bnone\b.*price:\s*₱?0/i,
+    ];
+
+    const aiSaysNotFound = notFoundHints.some((re) =>
+      re.test(recommendationSection),
+    );
+
+    if (aiSaysNotFound || productsWithDetails.length === 0) {
+      return {
+        recommendation:
+          'We could not find the exact product you are looking for in our catalog.',
+        highlight:
+          'The item you requested is currently not available, so we are not recommending alternatives at this time.',
+        elaboration:
+          'This specific product is not yet offered by any store in the system. You may want to check back later or adjust your search once similar items become available.',
+        products: [],
+      };
+    }
+
+    // Build a clean, non-repeating recommendation paragraph based on the
+    // unique products we actually return, so the text matches the payload.
+    const autoRecommendation = productsWithDetails
+      .map(
+        (product: any, index: number) =>
+          `${index + 1}. ${product.name} — Price: ₱${product.price}.`,
+      )
+      .join(' ');
+
     return {
-      recommendation: recommendationBody,
+      recommendation: autoRecommendation,
       ...(highlight ? { highlight } : {}),
       ...(elaboration ? { elaboration } : {}),
       products: productsWithDetails,
