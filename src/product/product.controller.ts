@@ -159,6 +159,7 @@ export class ProductController {
   @ApiOperation({ summary: 'Delete a product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Product deleted' })
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async deleteProduct(@Param('id') id: string) {
     return this.productService.deleteProduct({ id: Number(id) });
   }
