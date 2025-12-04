@@ -73,8 +73,6 @@ User query: "${query}"`;
   async getRecommendationsFromQuery(
     query: string,
     count: number = 3,
-    latitude?: number,
-    longitude?: number,
     detailed: boolean = false,
   ) {
     // If user asks to see all products, bypass AI and return the catalog summary
@@ -86,8 +84,6 @@ User query: "${query}"`;
     return this.generateProductRecommendations(
       query,
       count,
-      latitude,
-      longitude,
       detailed,
     );
   }
@@ -151,11 +147,9 @@ User query: "${query}"`;
   async generateProductRecommendations(
     userPreferences: string,
     count: number = 3,
-    latitude?: number,
-    longitude?: number,
     detailed: boolean = false,
   ) {
-    const normalizedCount = Math.max(1, Math.min(Math.floor(count ?? 3), 5));
+    const normalizedCount = Math.max(1, Math.min(Math.floor(count ?? 3), 50));
     const styleInstruction = detailed
       ? 'Style: Single flowing paragraph with full sentences. Provide vivid yet relevant details for each product.'
       : 'Style: One concise paragraph. No headings or bullet characters.';
@@ -238,48 +232,16 @@ The JSON array must list the products in the same order you mentioned them.`;
       .map((id) => productsById.get(id))
       .filter((p): p is Product => Boolean(p));
 
-    // Calculate distances if location is provided
-    const productsWithDistance = await Promise.all(
-      recommendedProducts.map(async (product: any) => {
-        let distance: number | null = null;
-        
-        if (latitude && longitude && product.store?.latitude && product.store?.longitude) {
-          // Use findNearby to get distance
-          const nearbyStores = (await this.storeService.findNearby(
-            latitude,
-            longitude,
-            1000, // Large radius to ensure we find the store
-          )) as any[];
-          
-          const storeWithDistance = nearbyStores.find(
-            (s: any) => s.id === product.storeId,
-          );
-          
-          if (storeWithDistance && storeWithDistance.distance !== undefined) {
-            distance = parseFloat(Number(storeWithDistance.distance).toFixed(2));
-          } else {
-            // Calculate distance manually using Haversine formula
-            distance = this.calculateDistance(
-              latitude,
-              longitude,
-              product.store.latitude,
-              product.store.longitude,
-            );
-          }
-        }
-
-        return {
-          id: product.id,
-          name: product.name,
-          description: product.description,
-          price: product.price,
-          imageUrl: product.imageUrl || null,
-          storeId: product.storeId,
-          storeName: product.store?.name || null,
-          distance: distance,
-        };
-      }),
-    );
+    // Prepare final product payload
+    const productsWithDetails = recommendedProducts.map((product: any) => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      imageUrl: product.imageUrl || null,
+      storeId: product.storeId,
+      storeName: product.store?.name || null,
+    }));
 
     const recommendationSection = recommendationText
       .split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0]
@@ -313,32 +275,8 @@ The JSON array must list the products in the same order you mentioned them.`;
       recommendation: recommendationBody,
       ...(highlight ? { highlight } : {}),
       ...(elaboration ? { elaboration } : {}),
-      products: productsWithDistance,
+      products: productsWithDetails,
     };
-  }
-
-  private calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number {
-    const R = 6371; // Radius of the Earth in km
-    const dLat = this.deg2rad(lat2 - lat1);
-    const dLon = this.deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.deg2rad(lat1)) *
-        Math.cos(this.deg2rad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c; // Distance in km
-    return parseFloat(distance.toFixed(2));
-  }
-
-  private deg2rad(deg: number): number {
-    return deg * (Math.PI / 180);
   }
 
   private async formatPromotionsForAI(promotions: any[]): Promise<string> {

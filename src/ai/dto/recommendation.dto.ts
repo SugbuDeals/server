@@ -7,8 +7,8 @@ export class ProductRecommendationDto {
   userPreferences: string;
 
   @ApiPropertyOptional({
-    example: 4,
-    description: 'Desired number of products (1-5). Defaults to 3.',
+    example: 10,
+    description: 'Desired number of products (1-50). Defaults to 3.',
   })
   @IsNumber()
   @IsOptional()
@@ -21,8 +21,8 @@ export class PromotionRecommendationDto {
   userPreferences: string;
 
   @ApiPropertyOptional({
-    example: 3,
-    description: 'Desired number of promotions (1-5). Defaults to 3.',
+    example: 5,
+    description: 'Desired number of promotions (1-50). Defaults to 3.',
   })
   @IsNumber()
   @IsOptional()
@@ -36,7 +36,7 @@ export class SimilarProductsDto {
 
   @ApiPropertyOptional({
     example: 5,
-    description: 'Number of similar products to include (1-10).',
+    description: 'Number of similar products to include (1-50).',
   })
   @IsNumber()
   @IsOptional()
@@ -55,8 +55,8 @@ export class UnifiedRecommendationDto {
   query: string;
 
   @ApiPropertyOptional({
-    example: 5,
-    description: 'Desired number of recommendations across sources (1-5).',
+    example: 8,
+    description: 'Desired number of recommendations across sources (1-50).',
   })
   @IsNumber()
   @IsOptional()
@@ -69,8 +69,8 @@ export class FreeformRecommendationDto {
   query: string;
 
   @ApiPropertyOptional({
-    example: 5,
-    description: 'Desired number of product recommendations (1-5).',
+    example: 12,
+    description: 'Desired number of product recommendations (1-50).',
   })
   @IsNumber()
   @IsOptional()
@@ -83,24 +83,4 @@ export class FreeformRecommendationDto {
   @IsBoolean()
   @IsOptional()
   detailed?: boolean;
-
-  @ApiPropertyOptional({ 
-    example: 10.3157, 
-    description: 'User latitude for distance calculation',
-    minimum: -90,
-    maximum: 90
-  })
-  @IsNumber()
-  @IsOptional()
-  latitude?: number;
-
-  @ApiPropertyOptional({ 
-    example: 123.8854, 
-    description: 'User longitude for distance calculation',
-    minimum: -180,
-    maximum: 180
-  })
-  @IsNumber()
-  @IsOptional()
-  longitude?: number;
 }
