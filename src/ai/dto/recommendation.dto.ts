@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ProductRecommendationDto {
@@ -75,12 +75,4 @@ export class FreeformRecommendationDto {
   @IsNumber()
   @IsOptional()
   count?: number;
-
-  @ApiPropertyOptional({
-    example: true,
-    description: 'Set true to receive a more elaborate narrative response.',
-  })
-  @IsBoolean()
-  @IsOptional()
-  detailed?: boolean;
 }

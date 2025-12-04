@@ -37,7 +37,6 @@ export class AiController {
     return this.aiService.getRecommendationsFromQuery(
       request.query,
       request.count,
-      request.detailed,
     );
   }
 }

@@ -73,7 +73,6 @@ User query: "${query}"`;
   async getRecommendationsFromQuery(
     query: string,
     count: number = 3,
-    detailed: boolean = false,
   ) {
     // If user asks to see all products, bypass AI and return the catalog summary
     if (this.isShowAllProductsQuery(query)) {
@@ -84,7 +83,6 @@ User query: "${query}"`;
     return this.generateProductRecommendations(
       query,
       count,
-      detailed,
     );
   }
 
@@ -144,24 +142,88 @@ User query: "${query}"`;
       .join('\n');
   }
 
+  /**
+   * Apply simple intent-based filtering so obvious non-gadget items
+   * (e.g. clothes) are removed when the user clearly asks for gadgets/tech.
+   */
+  private filterProductsByIntent(
+    userPreferences: string,
+    products: Array<Product & { category?: { name: string | null } }>,
+  ): Array<Product & { category?: { name: string | null } }> {
+    const q = (userPreferences || '').toLowerCase();
+
+    const gadgetKeywords = [
+      'gadget',
+      'device',
+      'phone',
+      'laptop',
+      'tablet',
+      'computer',
+      'pc',
+      'watch',
+      'smart',
+      'camera',
+      'tv',
+      'monitor',
+      'electronics',
+      'tech',
+    ];
+
+    const clothingKeywords = [
+      'clothes',
+      'clothing',
+      'apparel',
+      'fashion',
+      'outfit',
+      'suit',
+      'shirt',
+      'pants',
+      'jacket',
+      'coat',
+      'dress',
+      'skirt',
+      'shoe',
+      'sandal',
+    ];
+
+    const wantsGadgets = gadgetKeywords.some((k) => q.includes(k));
+    const explicitlyClothes = clothingKeywords.some((k) => q.includes(k));
+
+    if (!wantsGadgets || explicitlyClothes) {
+      // Let AI see the full catalog if the user didn't clearly ask for gadgets
+      // or explicitly mentioned clothing/fashion.
+      return products;
+    }
+
+    return products.filter((p) => {
+      const name = (p.name || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const catName = (p.category?.name || '').toLowerCase();
+
+      const looksClothing = clothingKeywords.some(
+        (k) => catName.includes(k) || name.includes(k) || desc.includes(k),
+      );
+
+      return !looksClothing;
+    });
+  }
+
   async generateProductRecommendations(
     userPreferences: string,
     count: number = 3,
-    detailed: boolean = false,
   ) {
     const normalizedCount = Math.max(1, Math.min(Math.floor(count ?? 3), 50));
-    const styleInstruction = detailed
-      ? 'Style: Single flowing paragraph with full sentences. Provide vivid yet relevant details for each product.'
-      : 'Style: One concise paragraph. No headings or bullet characters.';
-    const reasonTemplate = detailed
-      ? '{rank}. {product name} — Price: ₱{price}. {reason ≤40 words}.'
-      : '{rank}. {product name} — Price: ₱{price}. {reason ≤18 words}.';
+    const styleInstruction =
+      'Style: Single flowing paragraph with full sentences. Provide vivid yet relevant details for each product.';
+    const reasonTemplate =
+      '{rank}. {product name} — Price: ₱{price}. {reason ≤40 words}.';
 
-    // First get all available products with store information
-    const products = await this.productService.products({
-      include: { store: true },
+    // First get all available products with store and category information
+    const allProducts = await this.productService.products({
+      include: { store: true, category: true },
     });
 
+    const products = this.filterProductsByIntent(userPreferences, allProducts);
     const productsList = await this.formatProductsForAI(products);
 
     const prompt = `Context — products:
@@ -175,7 +237,7 @@ Format: For each product, use this structure in order and separate items with a 
 ${reasonTemplate}
 After the product paragraph, add two line breaks followed by:
 Recommendation rationale: {≤40 words explaining why the top choice (usually #1) best fits the user. Mention the product name and speak directly to the user using "you".}
-${detailed ? '\nThen add another blank line followed by "Elaboration:" and one paragraph (≤80 words) expanding on how the rest of the products compare or how to choose among them. This elaboration must also address the user in second person ("you", "your").' : ''}
+Then add another blank line followed by "Elaboration:" and one paragraph (≤80 words) expanding on how the rest of the products compare or how to choose among them. This elaboration must also address the user in second person ("you", "your").
 
 IMPORTANT: After the paragraph, add a JSON object on a new line with this exact format:
 {"productIds": [id_1, id_2, ..., id_${normalizedCount}]}
@@ -259,15 +321,13 @@ The JSON array must list the products in the same order you mentioned them.`;
       highlight = rationaleMatch[1].trim();
     }
 
-    if (detailed) {
-      const elaborationMatch = recommendationSection.match(/Elaboration:\s*([\s\S]*)$/i);
-      if (elaborationMatch) {
-        elaboration = elaborationMatch[1].trim();
-        if (!rationaleMatch) {
-          recommendationBody = recommendationSection
-            .split(/Elaboration:/i)[0]
-            .trim();
-        }
+    const elaborationMatch = recommendationSection.match(/Elaboration:\s*([\s\S]*)$/i);
+    if (elaborationMatch) {
+      elaboration = elaborationMatch[1].trim();
+      if (!rationaleMatch) {
+        recommendationBody = recommendationSection
+          .split(/Elaboration:/i)[0]
+          .trim();
       }
     }
 
