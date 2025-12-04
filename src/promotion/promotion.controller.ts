@@ -35,7 +35,7 @@ export class PromotionController {
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiBody({ type: CreatePromotionDto })
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
   create(@Body() createPromotionDto: CreatePromotionDto) {
     return this.promotionService.create(createPromotionDto);
   }
@@ -74,7 +74,7 @@ export class PromotionController {
   @ApiOperation({ summary: 'Update a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdatePromotionDto })
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updatePromotionDto: UpdatePromotionDto,
@@ -88,7 +88,7 @@ export class PromotionController {
   @ApiOperation({ summary: 'Delete a promotion' })
   @ApiParam({ name: 'id', type: Number })
   @ApiOkResponse({ description: 'Promotion deleted' })
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.promotionService.remove(id);
   }
