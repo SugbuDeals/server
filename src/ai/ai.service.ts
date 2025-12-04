@@ -75,6 +75,7 @@ User query: "${query}"`;
     count: number = 3,
     latitude?: number,
     longitude?: number,
+    detailed: boolean = false,
   ) {
     // If user asks to see all products, bypass AI and return the catalog summary
     if (this.isShowAllProductsQuery(query)) {
@@ -82,7 +83,13 @@ User query: "${query}"`;
     }
 
     // Default: return as many targeted product recommendations as requested (clamped inside helper)
-    return this.generateProductRecommendations(query, count, latitude, longitude);
+    return this.generateProductRecommendations(
+      query,
+      count,
+      latitude,
+      longitude,
+      detailed,
+    );
   }
 
   private isShowAllProductsQuery(query: string): boolean {
@@ -146,8 +153,15 @@ User query: "${query}"`;
     count: number = 3,
     latitude?: number,
     longitude?: number,
+    detailed: boolean = false,
   ) {
     const normalizedCount = Math.max(1, Math.min(Math.floor(count ?? 3), 5));
+    const styleInstruction = detailed
+      ? 'Style: Single flowing paragraph with full sentences. Provide vivid yet relevant details for each product.'
+      : 'Style: One concise paragraph. No headings or bullet characters.';
+    const reasonTemplate = detailed
+      ? '{rank}. {product name} — Price: ₱{price}. {reason ≤40 words}.'
+      : '{rank}. {product name} — Price: ₱{price}. {reason ≤18 words}.';
 
     // First get all available products with store information
     const products = await this.productService.products({
@@ -162,9 +176,12 @@ ${productsList}
 User preferences: "${userPreferences}"
 
 Task: Recommend exactly ${normalizedCount} distinct products that best match the user.
-Style: One concise paragraph. No headings or bullet characters.
+${styleInstruction}
 Format: For each product, use this structure in order and separate items with a single space:
-{rank}. {product name} — Price: ₱{price}. {reason ≤18 words}.
+${reasonTemplate}
+After the product paragraph, add two line breaks followed by:
+Recommendation rationale: {≤40 words explaining why the top choice (usually #1) best fits the user. Mention the product name and speak directly to the user using "you".}
+${detailed ? '\nThen add another blank line followed by "Elaboration:" and one paragraph (≤80 words) expanding on how the rest of the products compare or how to choose among them. This elaboration must also address the user in second person ("you", "your").' : ''}
 
 IMPORTANT: After the paragraph, add a JSON object on a new line with this exact format:
 {"productIds": [id_1, id_2, ..., id_${normalizedCount}]}
@@ -264,8 +281,38 @@ The JSON array must list the products in the same order you mentioned them.`;
       }),
     );
 
+    const recommendationSection = recommendationText
+      .split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0]
+      .trim();
+
+    let recommendationBody = recommendationSection;
+    let highlight: string | undefined;
+    let elaboration: string | undefined;
+
+    const rationaleMatch = recommendationSection.match(/Recommendation rationale:\s*([\s\S]*?)(?:\n\s*\n|Elaboration:|$)/i);
+    if (rationaleMatch) {
+      recommendationBody = recommendationSection
+        .slice(0, rationaleMatch.index)
+        .trim();
+      highlight = rationaleMatch[1].trim();
+    }
+
+    if (detailed) {
+      const elaborationMatch = recommendationSection.match(/Elaboration:\s*([\s\S]*)$/i);
+      if (elaborationMatch) {
+        elaboration = elaborationMatch[1].trim();
+        if (!rationaleMatch) {
+          recommendationBody = recommendationSection
+            .split(/Elaboration:/i)[0]
+            .trim();
+        }
+      }
+    }
+
     return {
-      recommendation: recommendationText.split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0].trim(),
+      recommendation: recommendationBody,
+      ...(highlight ? { highlight } : {}),
+      ...(elaboration ? { elaboration } : {}),
       products: productsWithDistance,
     };
   }

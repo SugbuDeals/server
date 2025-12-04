@@ -39,6 +39,7 @@ export class AiController {
       request.count,
       request.latitude,
       request.longitude,
+      request.detailed,
     );
   }
 }
