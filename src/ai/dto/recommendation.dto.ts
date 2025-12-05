@@ -6,7 +6,10 @@ export class ProductRecommendationDto {
   @IsString()
   userPreferences: string;
 
-  @ApiPropertyOptional({ example: 5, description: 'Optional number of results' })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Desired number of products (1-50). Defaults to 3.',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -17,7 +20,10 @@ export class PromotionRecommendationDto {
   @IsString()
   userPreferences: string;
 
-  @ApiPropertyOptional({ example: 3 })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Desired number of promotions (1-50). Defaults to 3.',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -28,7 +34,10 @@ export class SimilarProductsDto {
   @IsNumber()
   productId: number;
 
-  @ApiPropertyOptional({ example: 10 })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Number of similar products to include (1-50).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -45,7 +54,10 @@ export class UnifiedRecommendationDto {
   @IsString()
   query: string;
 
-  @ApiPropertyOptional({ example: 8 })
+  @ApiPropertyOptional({
+    example: 8,
+    description: 'Desired number of recommendations across sources (1-50).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
@@ -56,28 +68,11 @@ export class FreeformRecommendationDto {
   @IsString()
   query: string;
 
-  @ApiPropertyOptional({ example: 6 })
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'Desired number of product recommendations (1-50).',
+  })
   @IsNumber()
   @IsOptional()
   count?: number;
-
-  @ApiPropertyOptional({ 
-    example: 10.3157, 
-    description: 'User latitude for distance calculation',
-    minimum: -90,
-    maximum: 90
-  })
-  @IsNumber()
-  @IsOptional()
-  latitude?: number;
-
-  @ApiPropertyOptional({ 
-    example: 123.8854, 
-    description: 'User longitude for distance calculation',
-    minimum: -180,
-    maximum: 180
-  })
-  @IsNumber()
-  @IsOptional()
-  longitude?: number;
 }
