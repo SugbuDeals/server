@@ -451,6 +451,35 @@ export class AiService implements OnModuleInit {
       'fish tank',
     ];
 
+    const woodKeywords = [
+      'wood',
+      'wooden',
+      'timber',
+      'lumber',
+      'plywood',
+      'hardwood',
+      'softwood',
+      'oak',
+      'pine',
+      'cedar',
+      'mahogany',
+      'teak',
+      'walnut',
+      'cherry',
+      'maple',
+      'furniture wood',
+      'wood furniture',
+      'wooden furniture',
+      'wood table',
+      'wooden table',
+      'wood chair',
+      'wooden chair',
+      'wood desk',
+      'wooden desk',
+      'wood shelf',
+      'wooden shelf',
+    ];
+
     // 2. Identify requested groups based on user query
     const phoneBrandKeywords = [
       'redmi',
@@ -493,6 +522,7 @@ export class AiService implements OnModuleInit {
     const wantsBooks = bookKeywords.some((k) => q.includes(k));
     const wantsGroceries = groceryKeywords.some((k) => q.includes(k));
     const wantsPets = petKeywords.some((k) => q.includes(k));
+    const wantsWood = woodKeywords.some((k) => q.includes(k));
 
     const requestedGroups = new Set<string>();
     if (wantsPhones) requestedGroups.add('phones');
@@ -512,6 +542,7 @@ export class AiService implements OnModuleInit {
     if (wantsBooks) requestedGroups.add('books');
     if (wantsGroceries) requestedGroups.add('groceries');
     if (wantsPets) requestedGroups.add('pets');
+    if (wantsWood) requestedGroups.add('wood');
 
     // Helper to classify whether a product should be treated as a phone
     const isPhoneProduct = (combined: string): boolean =>
@@ -531,8 +562,28 @@ export class AiService implements OnModuleInit {
     }
 
     // If the user didn't clearly express any preference (e.g., asked "best prices"), let the AI see everything
+    // BUT if the query contains specific product-related terms that don't match categories, do text-based filtering
     if (requestedGroups.size === 0) {
-      return products;
+      // Check if query contains specific product terms (not generic queries)
+      const genericQueries = ['best', 'cheap', 'price', 'prices', 'show', 'list', 'all', 'everything', 'recommend', 'suggest'];
+      const hasGenericQuery = genericQueries.some(term => q.includes(term));
+      
+      // If it's a generic query, return all products
+      if (hasGenericQuery || q.length < 3) {
+        return products;
+      }
+      
+      // Otherwise, it's a specific product search - filter by text matching
+      const queryTerms = q.split(/\s+/).filter(term => term.length > 2);
+      return products.filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const catName = (p.category?.name || '').toLowerCase();
+        const combined = `${name} ${desc} ${catName}`;
+        
+        // Check if any query term appears in the product
+        return queryTerms.some(term => combined.includes(term));
+      });
     }
 
     // 3. Filter products: keep only those that match one of the requested groups
@@ -599,6 +650,9 @@ export class AiService implements OnModuleInit {
       }
       if (petKeywords.some((k) => combined.includes(k))) {
         productGroups.push('pets');
+      }
+      if (woodKeywords.some((k) => combined.includes(k))) {
+        productGroups.push('wood');
       }
 
       if (productGroups.length === 0) {
@@ -683,6 +737,39 @@ The JSON array must list the products in the same order you mentioned them.`;
 
     const recommendationText = response?.content || '';
 
+    const recommendationSection = recommendationText
+      .split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0]
+      .trim();
+
+    // Check if the AI indicates the requested product does not exist BEFORE processing products
+    const notFoundHints = [
+      /no\b.*available/i,
+      /not available/i,
+      /could not find/i,
+      /won'?t find/i,
+      /\bnone\b.*price:\s*₱?0/i,
+      /does not exist/i,
+      /not found/i,
+      /unavailable/i,
+    ];
+
+    const aiSaysNotFound = notFoundHints.some((re) =>
+      re.test(recommendationSection),
+    );
+
+    // If AI says not found, return early without recommending alternatives
+    if (aiSaysNotFound) {
+      return {
+        recommendation:
+          'We could not find the exact product you are looking for in our catalog.',
+        highlight:
+          'The item you requested is currently not available, so we are not recommending alternatives at this time.',
+        elaboration:
+          'This specific product is not yet offered by any store in the system. You may want to check back later or adjust your search once similar items become available.',
+        products: [],
+      };
+    }
+
     // Extract product IDs from JSON in the response
     let productIds: number[] = [];
     try {
@@ -709,7 +796,8 @@ The JSON array must list the products in the same order you mentioned them.`;
     }
 
     // Still short? fill with remaining catalog items to honor requested count
-    if (productIds.length < normalizedCount) {
+    // BUT only if we have at least one product ID from the AI (meaning it actually recommended something)
+    if (productIds.length > 0 && productIds.length < normalizedCount) {
       for (const product of products) {
         if (!productIds.includes(product.id)) {
           productIds.push(product.id);
@@ -739,10 +827,6 @@ The JSON array must list the products in the same order you mentioned them.`;
       storeName: product.store?.name || null,
     }));
 
-    const recommendationSection = recommendationText
-      .split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0]
-      .trim();
-
     let recommendationBody = recommendationSection;
     let highlight: string | undefined;
     let elaboration: string | undefined;
@@ -769,21 +853,8 @@ The JSON array must list the products in the same order you mentioned them.`;
       }
     }
 
-    // If the AI indicates the requested product does not exist, or we have no
-    // concrete products to show, override with a clear "not available" message
-    const notFoundHints = [
-      /no\b.*available/i,
-      /not available/i,
-      /could not find/i,
-      /won'?t find/i,
-      /\bnone\b.*price:\s*₱?0/i,
-    ];
-
-    const aiSaysNotFound = notFoundHints.some((re) =>
-      re.test(recommendationSection),
-    );
-
-    if (aiSaysNotFound || productsWithDetails.length === 0) {
+    // If we have no concrete products to show, override with a clear "not available" message
+    if (productsWithDetails.length === 0) {
       return {
         recommendation:
           'We could not find the exact product you are looking for in our catalog.',
