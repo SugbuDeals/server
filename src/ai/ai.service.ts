@@ -74,25 +74,53 @@ export class AiService implements OnModuleInit {
 
   private isShowAllProductsQuery(query: string): boolean {
     const q = (query || '').toLowerCase();
-    return (
-      q.includes('show all products') ||
-      q.includes('see all products') ||
-      q.includes('list all products') ||
-      q.includes('list products') ||
-      q.includes('browse products') ||
-      q === 'all products' ||
-      q === 'products'
-    );
+    // Check for variations of "show/see/list all products" queries
+    const hasShowAll = (q.includes('show') && q.includes('all') && q.includes('product')) ||
+                       (q.includes('show') && q.includes('product') && (q.includes('available') || q.includes('all')));
+    const hasSeeAll = q.includes('see') && q.includes('all') && q.includes('product');
+    const hasListAll = (q.includes('list') && q.includes('all') && q.includes('product')) ||
+                       (q.includes('list') && q.includes('product'));
+    const hasBrowse = q.includes('browse') && q.includes('product');
+    const isExactMatch = q === 'all products' || q === 'products' || q.trim() === 'all';
+    
+    return hasShowAll || hasSeeAll || hasListAll || hasBrowse || isExactMatch;
   }
 
   private async listAllProductsSummary() {
-    const products = await this.productService.products({});
-    const summary = products
-      .map((p) => `${p.name} (₱${p.price})`)
-      .join(', ');
+    const products = await this.productService.products({
+      include: { store: true, category: true },
+    });
+    
+    if (!products || products.length === 0) {
+      return {
+        recommendation: 'No products are currently available in our catalog.',
+        highlight: 'The catalog is empty at this time.',
+        elaboration: 'Please check back later or contact support if you believe this is an error.',
+        products: [],
+      };
+    }
+
+    // Format products for response
+    const productsWithDetails = products.map((product: any) => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      imageUrl: product.imageUrl || null,
+      storeId: product.storeId,
+      storeName: product.store?.name || null,
+    }));
+
+    // Create a summary recommendation text
+    const productList = products
+      .map((p, index) => `${index + 1}. ${p.name} — Price: ₱${p.price}`)
+      .join(' ');
+
     return {
-      role: 'assistant',
-      content: summary ? `Available products: ${summary}` : 'No products available.',
+      recommendation: `Here are all available products: ${productList}`,
+      highlight: `We have ${products.length} product${products.length !== 1 ? 's' : ''} available in our catalog.`,
+      elaboration: 'These are all the products currently available across all stores. You can browse through them to find what you\'re looking for.',
+      products: productsWithDetails,
     };
   }
 
@@ -564,17 +592,33 @@ export class AiService implements OnModuleInit {
     // If the user didn't clearly express any preference (e.g., asked "best prices"), let the AI see everything
     // BUT if the query contains specific product-related terms that don't match categories, do text-based filtering
     if (requestedGroups.size === 0) {
-      // Check if query contains specific product terms (not generic queries)
-      const genericQueries = ['best', 'cheap', 'price', 'prices', 'show', 'list', 'all', 'everything', 'recommend', 'suggest'];
-      const hasGenericQuery = genericQueries.some(term => q.includes(term));
+      // Generic query verbs that don't indicate a specific product search
+      const genericQueryVerbs = ['best', 'cheap', 'price', 'prices', 'show', 'list', 'all', 'everything', 'recommend', 'suggest', 'browse', 'available'];
+      // Action verbs that typically precede a product name (e.g., "find me a iPhone")
+      const actionVerbs = ['find', 'get', 'search', 'look', 'want', 'need', 'buy', 'purchase'];
       
-      // If it's a generic query, return all products
-      if (hasGenericQuery || q.length < 3) {
+      // Check if query is a truly generic query (like "show all products", "best prices")
+      const isTrulyGeneric = genericQueryVerbs.some(term => q.includes(term)) && 
+                             !actionVerbs.some(verb => q.includes(verb));
+      
+      // If it's a truly generic query without specific product terms, return all products
+      if (isTrulyGeneric || q.length < 3) {
         return products;
       }
       
       // Otherwise, it's a specific product search - filter by text matching
-      const queryTerms = q.split(/\s+/).filter(term => term.length > 2);
+      // Remove common action verbs and articles to extract actual product terms
+      const stopWords = ['find', 'me', 'a', 'an', 'the', 'for', 'get', 'search', 'look', 'want', 'need', 'buy', 'purchase', 'show', 'list'];
+      const queryTerms = q
+        .split(/\s+/)
+        .filter(term => term.length > 2 && !stopWords.includes(term.toLowerCase()));
+      
+      // If no meaningful terms after filtering, return all products
+      if (queryTerms.length === 0) {
+        return products;
+      }
+      
+      // Filter products by matching query terms
       return products.filter((p) => {
         const name = (p.name || '').toLowerCase();
         const desc = (p.description || '').toLowerCase();
@@ -582,7 +626,7 @@ export class AiService implements OnModuleInit {
         const combined = `${name} ${desc} ${catName}`;
         
         // Check if any query term appears in the product
-        return queryTerms.some(term => combined.includes(term));
+        return queryTerms.some(term => combined.includes(term.toLowerCase()));
       });
     }
 
@@ -741,7 +785,20 @@ The JSON array must list the products in the same order you mentioned them.`;
       .split(/\{[\s\S]*"productIds"[\s\S]*\}/)[0]
       .trim();
 
-    // Check if the AI indicates the requested product does not exist BEFORE processing products
+    // Extract product IDs from JSON in the response first
+    let productIds: number[] = [];
+    try {
+      const jsonMatch = recommendationText.match(/\{[\s\S]*"productIds"[\s\S]*\}/);
+      if (jsonMatch) {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        productIds = jsonData.productIds || [];
+      }
+    } catch (error) {
+      console.error('Error parsing product IDs from AI response:', error);
+    }
+
+    // Check if the AI indicates the requested product does not exist
+    // Only trust this if we have no product IDs AND the message is very clear
     const notFoundHints = [
       /no\b.*available/i,
       /not available/i,
@@ -757,31 +814,6 @@ The JSON array must list the products in the same order you mentioned them.`;
       re.test(recommendationSection),
     );
 
-    // If AI says not found, return early without recommending alternatives
-    if (aiSaysNotFound) {
-      return {
-        recommendation:
-          'We could not find the exact product you are looking for in our catalog.',
-        highlight:
-          'The item you requested is currently not available, so we are not recommending alternatives at this time.',
-        elaboration:
-          'This specific product is not yet offered by any store in the system. You may want to check back later or adjust your search once similar items become available.',
-        products: [],
-      };
-    }
-
-    // Extract product IDs from JSON in the response
-    let productIds: number[] = [];
-    try {
-      const jsonMatch = recommendationText.match(/\{[\s\S]*"productIds"[\s\S]*\}/);
-      if (jsonMatch) {
-        const jsonData = JSON.parse(jsonMatch[0]);
-        productIds = jsonData.productIds || [];
-      }
-    } catch (error) {
-      console.error('Error parsing product IDs from AI response:', error);
-    }
-
     // If not enough product IDs found, try to extract from product names
     if (productIds.length < normalizedCount) {
       for (const product of products) {
@@ -793,6 +825,27 @@ The JSON array must list the products in the same order you mentioned them.`;
           if (productIds.length >= normalizedCount) break;
         }
       }
+    }
+
+    // Only return "not found" if AI says so AND we still have no product IDs after extraction attempts
+    // AND we have products available (meaning the filter worked but AI couldn't match)
+    // If we have no products at all after filtering, that was already handled above
+    if (aiSaysNotFound && productIds.length === 0 && products.length > 0) {
+      // If still no products found and AI clearly says not found, return empty
+      // But only if the query seems very specific (not a generic "show all" query)
+      const isGenericQuery = /show|list|all|available|everything/i.test(userPreferences);
+      if (!isGenericQuery) {
+        return {
+          recommendation:
+            'We could not find the exact product you are looking for in our catalog.',
+          highlight:
+            'The item you requested is currently not available, so we are not recommending alternatives at this time.',
+          elaboration:
+            'This specific product is not yet offered by any store in the system. You may want to check back later or adjust your search once similar items become available.',
+          products: [],
+        };
+      }
+      // For generic queries, fall through to show available products even if AI says not found
     }
 
     // Still short? fill with remaining catalog items to honor requested count
