@@ -24,6 +24,7 @@ import {
   ApiUnauthorizedResponse,
   ApiForbiddenResponse,
   ApiCreatedResponse,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -124,7 +125,7 @@ export class ProductController {
     example: 1
   })
   @ApiOkResponse({ 
-    description: 'Returns product details',
+    description: 'Returns product details. May return null if product not found (status 200 with null body).',
     type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })

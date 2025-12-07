@@ -58,7 +58,7 @@ async function bootstrap() {
     try {
       const options = new DocumentBuilder()
         .setTitle('SugbuDeals API')
-        .setDescription('REST API for SugbuDeals: authentication, users, stores, products, categories, promotions, and AI endpoints.')
+        .setDescription('REST API for SugbuDeals: authentication, users, stores, products, categories, promotions, bookmarks, subscriptions, notifications, files, and AI endpoints.')
         .setVersion('1.0.0')
         .addBearerAuth(
           {
@@ -79,6 +79,7 @@ async function bootstrap() {
         .addTag('Subscriptions', 'Subscription plan and user subscription management')
         .addTag('Notifications', 'User notification management')
         .addTag('AI', 'AI chat, generation, and recommendations')
+        .addTag('Files', 'File upload, serving, and management')
         .build();
 
       const document = SwaggerModule.createDocument(app, options);

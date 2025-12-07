@@ -19,6 +19,7 @@ import {
   ApiForbiddenResponse,
   ApiBadRequestResponse,
   ApiCreatedResponse,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { CategoryService } from './category.service';
 import { CreateCategoryDTO } from './dto/createCategory.dto';
@@ -85,7 +86,7 @@ export class CategoryController {
     example: 1
   })
   @ApiOkResponse({ 
-    description: 'Returns category details',
+    description: 'Returns category details. May return null if category not found (status 200 with null body).',
     type: CategoryResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })

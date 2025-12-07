@@ -125,7 +125,7 @@ export class FileController {
    */
   @Post()
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('bearer')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ 
     summary: 'Upload a file',
@@ -207,7 +207,7 @@ export class FileController {
    */
   @Delete(':filename')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Delete a file',
     description: 'Permanently deletes a file from the server. This operation cannot be undone.'
@@ -275,7 +275,7 @@ export class FileController {
    */
   @Delete('clear')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Clear all uploaded files (Admin only)',
     description: 'Permanently deletes all files in the uploads directory. Restricted to admins only. This operation cannot be undone. Only files are deleted (directories are skipped).'
@@ -298,12 +298,12 @@ export class FileController {
     }
   })
   @ApiResponse({
-    status: 500,
+    status: 400,
     description: 'Error clearing files',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number', example: 500 },
+        statusCode: { type: 'number', example: 400 },
         message: { type: 'string', example: 'Unable to clear files' }
       }
     }

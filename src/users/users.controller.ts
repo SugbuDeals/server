@@ -24,6 +24,8 @@ import {
   ApiOperation,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiBody,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -74,7 +76,7 @@ export class UserController {
     type: Number,
   })
   @ApiOkResponse({ 
-    description: 'Returns the authenticated user\'s profile',
+    description: 'Returns the authenticated user\'s profile. May return null if user not found (status 200 with null body).',
     type: UserResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
@@ -246,6 +248,7 @@ export class UserController {
     type: Number,
     example: 1
   })
+  @ApiBody({ type: UpdateUserDTO })
   @ApiOkResponse({ 
     description: 'User updated successfully',
     type: UserResponseDto

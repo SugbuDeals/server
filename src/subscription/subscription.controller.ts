@@ -25,6 +25,7 @@ import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiCreatedResponse,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -209,7 +210,7 @@ export class SubscriptionController {
     example: 1
   })
   @ApiOkResponse({ 
-    description: 'Returns the active user subscription with plan details',
+    description: 'Returns the active user subscription with plan details. May return null if no active subscription exists (status 200 with null body).',
     type: UserSubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
@@ -283,7 +284,7 @@ export class SubscriptionController {
     example: 1
   })
   @ApiOkResponse({ 
-    description: 'Returns subscription plan details',
+    description: 'Returns subscription plan details. May return null if subscription not found (status 200 with null body).',
     type: SubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
