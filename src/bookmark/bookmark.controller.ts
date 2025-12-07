@@ -19,6 +19,7 @@ import {
 import { BookmarkService } from './bookmark.service';
 import { ListBookmarksDto, StoreBookmarkDto } from './dto/store-bookmark.dto';
 import { ProductBookmarkDto } from './dto/product-bookmark.dto';
+import { StoreBookmarkResponseDto, ProductBookmarkResponseDto } from './dto/bookmark-response.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
@@ -55,26 +56,7 @@ export class BookmarkController {
   })
   @ApiOkResponse({ 
     description: 'Returns store bookmarks for the user',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          userId: { type: 'number' },
-          storeId: { type: 'number' },
-          createdAt: { type: 'string', format: 'date-time' },
-          store: {
-            type: 'object',
-            properties: {
-              id: { type: 'number' },
-              name: { type: 'string' },
-              description: { type: 'string' }
-            }
-          }
-        }
-      }
-    }
+    type: [StoreBookmarkResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBody({
@@ -121,15 +103,7 @@ export class BookmarkController {
   })
   @ApiCreatedResponse({ 
     description: 'Store bookmarked successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        storeId: { type: 'number' },
-        createdAt: { type: 'string', format: 'date-time' }
-      }
-    }
+    type: StoreBookmarkResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -174,14 +148,7 @@ export class BookmarkController {
   })
   @ApiOkResponse({ 
     description: 'Store bookmark removed successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        storeId: { type: 'number' }
-      }
-    }
+    type: StoreBookmarkResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -218,27 +185,7 @@ export class BookmarkController {
   })
   @ApiOkResponse({ 
     description: 'Returns product bookmarks for the user',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          userId: { type: 'number' },
-          productId: { type: 'number' },
-          createdAt: { type: 'string', format: 'date-time' },
-          product: {
-            type: 'object',
-            properties: {
-              id: { type: 'number' },
-              name: { type: 'string' },
-              price: { type: 'number' },
-              stock: { type: 'number' }
-            }
-          }
-        }
-      }
-    }
+    type: [ProductBookmarkResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBody({
@@ -288,15 +235,7 @@ export class BookmarkController {
   })
   @ApiCreatedResponse({ 
     description: 'Product bookmarked successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        productId: { type: 'number' },
-        createdAt: { type: 'string', format: 'date-time' }
-      }
-    }
+    type: ProductBookmarkResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -341,14 +280,7 @@ export class BookmarkController {
   })
   @ApiOkResponse({ 
     description: 'Product bookmark removed successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        productId: { type: 'number' }
-      }
-    }
+    type: ProductBookmarkResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 

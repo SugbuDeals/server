@@ -76,6 +76,8 @@ async function bootstrap() {
         .addTag('Categories', 'Category management endpoints')
         .addTag('Promotions', 'Promotion management endpoints')
         .addTag('Bookmarks', 'Bookmark stores and products')
+        .addTag('Subscriptions', 'Subscription plan and user subscription management')
+        .addTag('Notifications', 'User notification management')
         .addTag('AI', 'AI chat, generation, and recommendations')
         .build();
 

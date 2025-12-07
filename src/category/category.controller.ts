@@ -23,6 +23,7 @@ import {
 import { CategoryService } from './category.service';
 import { CreateCategoryDTO } from './dto/createCategory.dto';
 import { UpdateCategoryDTO } from './dto/updateCategory.dto';
+import { CategoryResponseDto } from './dto/category-response.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
@@ -57,18 +58,7 @@ export class CategoryController {
   })
   @ApiOkResponse({ 
     description: 'Returns list of categories',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          name: { type: 'string' },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' }
-        }
-      }
-    }
+    type: [CategoryResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findManyCategories() {
@@ -96,15 +86,7 @@ export class CategoryController {
   })
   @ApiOkResponse({ 
     description: 'Returns category details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' }
-      }
-    }
+    type: CategoryResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findUniqueCategory(@Param('id') id: string) {
@@ -127,13 +109,7 @@ export class CategoryController {
   @ApiBody({ type: CreateCategoryDTO })
   @ApiCreatedResponse({ 
     description: 'Category created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: CategoryResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -183,13 +159,7 @@ export class CategoryController {
   @ApiBody({ type: UpdateCategoryDTO })
   @ApiOkResponse({ 
     description: 'Category updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: CategoryResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -245,13 +215,7 @@ export class CategoryController {
   })
   @ApiOkResponse({ 
     description: 'Category deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: CategoryResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 

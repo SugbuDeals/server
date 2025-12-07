@@ -171,7 +171,16 @@ export class AuthService {
         });
     }
 
-    // Generate and return access token
-    return this.login(user);
+    // Generate access token
+    const { access_token } = await this.login(user);
+    
+    // Remove password from user object
+    const { password: _, ...userWithoutPassword } = user;
+    
+    // Return access token and user data
+    return {
+      access_token,
+      user: userWithoutPassword,
+    };
   }
 }

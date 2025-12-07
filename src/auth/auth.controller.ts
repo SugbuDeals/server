@@ -22,6 +22,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { LocalAuthGuard } from './local-auth.guard';
 import { RegisterDTO } from './dto/register.dto';
 import { PayloadDTO } from './dto/payload.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
 
 /**
  * Authentication Controller
@@ -57,24 +58,7 @@ export class AuthController {
   @ApiBody({ type: LoginDTO })
   @ApiOkResponse({ 
     description: 'Authentication successful. Returns JWT access token and user payload',
-    schema: {
-      type: 'object',
-      properties: {
-        access_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-        },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'number', example: 1 },
-            email: { type: 'string', example: 'user@example.com' },
-            name: { type: 'string', example: 'John Doe' },
-            role: { type: 'string', enum: ['CONSUMER', 'RETAILER', 'ADMIN'], example: 'CONSUMER' }
-          }
-        }
-      }
-    }
+    type: AuthResponseDto
   })
   @ApiUnauthorizedResponse({ 
     description: 'Invalid email or password credentials',
@@ -127,24 +111,7 @@ export class AuthController {
   @ApiBody({ type: RegisterDTO })
   @ApiCreatedResponse({ 
     description: 'User registered successfully. Returns JWT access token and user data.',
-    schema: {
-      type: 'object',
-      properties: {
-        access_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-        },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'number', example: 1 },
-            email: { type: 'string', example: 'newuser@example.com' },
-            name: { type: 'string', example: 'Jane Doe' },
-            role: { type: 'string', enum: ['CONSUMER', 'RETAILER'], example: 'CONSUMER' }
-          }
-        }
-      }
-    }
+    type: AuthResponseDto
   })
   @ApiBadRequestResponse({ 
     description: 'Registration failed - email already exists, validation error, or invalid role',

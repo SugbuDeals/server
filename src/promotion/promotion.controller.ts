@@ -24,6 +24,7 @@ import {
 import { PromotionService } from './promotion.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { PromotionResponseDto } from './dto/promotion-response.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
@@ -63,15 +64,7 @@ export class PromotionController {
   @ApiBody({ type: CreatePromotionDto })
   @ApiCreatedResponse({ 
     description: 'Promotion created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        title: { type: 'string' },
-        discount: { type: 'number' },
-        active: { type: 'boolean' }
-      }
-    }
+    type: PromotionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -112,20 +105,7 @@ export class PromotionController {
   })
   @ApiOkResponse({ 
     description: 'Returns list of all promotions',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          title: { type: 'string' },
-          discount: { type: 'number' },
-          active: { type: 'boolean' },
-          startsAt: { type: 'string', format: 'date-time' },
-          endsAt: { type: 'string', format: 'date-time', nullable: true }
-        }
-      }
-    }
+    type: [PromotionResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   findAll() {
@@ -151,20 +131,7 @@ export class PromotionController {
   })
   @ApiOkResponse({ 
     description: 'Returns list of active promotions',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          title: { type: 'string' },
-          discount: { type: 'number' },
-          active: { type: 'boolean', example: true },
-          startsAt: { type: 'string', format: 'date-time' },
-          endsAt: { type: 'string', format: 'date-time', nullable: true }
-        }
-      }
-    }
+    type: [PromotionResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   findActive() {
@@ -192,20 +159,7 @@ export class PromotionController {
   })
   @ApiOkResponse({ 
     description: 'Returns promotion details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        title: { type: 'string' },
-        type: { type: 'string' },
-        description: { type: 'string' },
-        discount: { type: 'number' },
-        active: { type: 'boolean' },
-        startsAt: { type: 'string', format: 'date-time' },
-        endsAt: { type: 'string', format: 'date-time', nullable: true },
-        productId: { type: 'number', nullable: true }
-      }
-    }
+    type: PromotionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -235,14 +189,7 @@ export class PromotionController {
   @ApiBody({ type: UpdatePromotionDto })
   @ApiOkResponse({ 
     description: 'Promotion updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        title: { type: 'string' },
-        discount: { type: 'number' }
-      }
-    }
+    type: PromotionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -294,13 +241,7 @@ export class PromotionController {
   })
   @ApiOkResponse({ 
     description: 'Promotion deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        title: { type: 'string' }
-      }
-    }
+    type: PromotionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 

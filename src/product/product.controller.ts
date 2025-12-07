@@ -30,6 +30,7 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
 import { UpdateProductDTO } from './dto/updateProduct.dto';
 import { UpdateProductStatusDTO } from './dto/updateProductStatus.dto';
+import { ProductResponseDto } from './dto/product-response.dto';
 import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
@@ -83,21 +84,7 @@ export class ProductController {
   })
   @ApiOkResponse({ 
     description: 'Returns list of products',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          name: { type: 'string' },
-          description: { type: 'string' },
-          price: { type: 'number' },
-          stock: { type: 'number' },
-          isActive: { type: 'boolean' },
-          storeId: { type: 'number' }
-        }
-      }
-    }
+    type: [ProductResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findManyProducts(
@@ -138,19 +125,7 @@ export class ProductController {
   })
   @ApiOkResponse({ 
     description: 'Returns product details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        price: { type: 'number' },
-        stock: { type: 'number' },
-        isActive: { type: 'boolean' },
-        storeId: { type: 'number' },
-        categoryId: { type: 'number', nullable: true }
-      }
-    }
+    type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findUniqueProduct(@Param('id') id: string) {
@@ -178,15 +153,7 @@ export class ProductController {
   @ApiBody({ type: CreateProductDTO })
   @ApiCreatedResponse({ 
     description: 'Product created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        price: { type: 'number' },
-        stock: { type: 'number' }
-      }
-    }
+    type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -254,15 +221,7 @@ export class ProductController {
   @ApiBody({ type: UpdateProductDTO })
   @ApiOkResponse({ 
     description: 'Product updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        price: { type: 'number' },
-        stock: { type: 'number' }
-      }
-    }
+    type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -335,13 +294,7 @@ export class ProductController {
   @ApiBody({ type: UpdateProductStatusDTO })
   @ApiOkResponse({ 
     description: 'Product status updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        isActive: { type: 'boolean' }
-      }
-    }
+    type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -406,13 +359,7 @@ export class ProductController {
   })
   @ApiOkResponse({ 
     description: 'Product deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: ProductResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 

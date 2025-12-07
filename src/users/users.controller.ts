@@ -30,6 +30,7 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Prisma, User, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { UpdateUserDTO } from './dto/updateUser.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
 
@@ -74,17 +75,7 @@ export class UserController {
   })
   @ApiOkResponse({ 
     description: 'Returns the authenticated user\'s profile',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number', example: 1 },
-        email: { type: 'string', example: 'user@example.com' },
-        name: { type: 'string', example: 'John Doe' },
-        role: { type: 'string', enum: ['CONSUMER', 'RETAILER', 'ADMIN'], example: 'CONSUMER' },
-        createdAt: { type: 'string', format: 'date-time' },
-        imageUrl: { type: 'string', nullable: true, example: 'http://localhost:3000/files/image.jpg' }
-      }
-    }
+    type: UserResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findUniqueUser(
@@ -142,19 +133,7 @@ export class UserController {
   })
   @ApiOkResponse({ 
     description: 'Returns paginated list of users',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          email: { type: 'string' },
-          name: { type: 'string' },
-          role: { type: 'string', enum: ['CONSUMER', 'RETAILER', 'ADMIN'] },
-          createdAt: { type: 'string', format: 'date-time' }
-        }
-      }
-    }
+    type: [UserResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findManyUsers(
@@ -207,14 +186,7 @@ export class UserController {
   })
   @ApiOkResponse({ 
     description: 'User deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        email: { type: 'string' },
-        name: { type: 'string' }
-      }
-    }
+    type: UserResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -276,16 +248,7 @@ export class UserController {
   })
   @ApiOkResponse({ 
     description: 'User updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        email: { type: 'string' },
-        name: { type: 'string' },
-        role: { type: 'string', enum: ['CONSUMER', 'RETAILER', 'ADMIN'] },
-        imageUrl: { type: 'string', nullable: true }
-      }
-    }
+    type: UserResponseDto
   })
   @ApiBadRequestResponse({ 
     description: 'Invalid user ID or validation error',
@@ -378,15 +341,7 @@ export class UserController {
   })
   @ApiOkResponse({ 
     description: 'Retailer approved successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        email: { type: 'string' },
-        name: { type: 'string' },
-        role: { type: 'string', example: 'RETAILER' }
-      }
-    }
+    type: UserResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 

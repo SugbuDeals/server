@@ -31,6 +31,7 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateStoreDTO } from './dto/createStore.dto';
 import { UpdateStoreDTO } from './dto/updateStore.dto';
 import { ManageStoreStatusDTO } from './dto/manageStoreStatus.dto';
+import { StoreResponseDto, StoreWithDistanceResponseDto } from './dto/store-response.dto';
 import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
@@ -96,19 +97,7 @@ export class StoreController {
   })
   @ApiOkResponse({ 
     description: 'Returns paginated list of stores',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          name: { type: 'string' },
-          description: { type: 'string' },
-          verificationStatus: { type: 'string', enum: ['UNVERIFIED', 'VERIFIED'] },
-          isActive: { type: 'boolean' }
-        }
-      }
-    }
+    type: [StoreResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -211,19 +200,7 @@ export class StoreController {
   @ApiOkResponse({
     description:
       'Returns array of stores with calculated distance field (in km), ordered by proximity',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          name: { type: 'string' },
-          distance: { type: 'number', description: 'Distance in kilometers' },
-          latitude: { type: 'number' },
-          longitude: { type: 'number' }
-        }
-      }
-    }
+    type: [StoreWithDistanceResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -269,18 +246,7 @@ export class StoreController {
   })
   @ApiOkResponse({ 
     description: 'Returns store details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        verificationStatus: { type: 'string', enum: ['UNVERIFIED', 'VERIFIED'] },
-        isActive: { type: 'boolean' },
-        latitude: { type: 'number', nullable: true },
-        longitude: { type: 'number', nullable: true }
-      }
-    }
+    type: StoreResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findUniqueStore(@Param('id') id: string) {
@@ -309,14 +275,7 @@ export class StoreController {
   @ApiBody({ type: CreateStoreDTO })
   @ApiCreatedResponse({ 
     description: 'Store created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        verificationStatus: { type: 'string', example: 'UNVERIFIED' }
-      }
-    }
+    type: StoreResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -386,14 +345,7 @@ export class StoreController {
   @ApiBody({ type: UpdateStoreDTO })
   @ApiOkResponse({ 
     description: 'Store updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        description: { type: 'string' }
-      }
-    }
+    type: StoreResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -492,14 +444,7 @@ export class StoreController {
   @ApiBody({ type: ManageStoreStatusDTO })
   @ApiOkResponse({ 
     description: 'Store status updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        verificationStatus: { type: 'string', enum: ['UNVERIFIED', 'VERIFIED'] },
-        isActive: { type: 'boolean' }
-      }
-    }
+    type: StoreResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -588,13 +533,7 @@ export class StoreController {
   })
   @ApiOkResponse({ 
     description: 'Store deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: StoreResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 

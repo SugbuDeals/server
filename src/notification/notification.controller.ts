@@ -27,6 +27,7 @@ import {
 import { NotificationService } from './notification.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { NotificationResponseDto } from './dto/notification-response.dto';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 /**
@@ -87,21 +88,7 @@ export class NotificationController {
   })
   @ApiOkResponse({ 
     description: 'Returns paginated list of notifications',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          type: { type: 'string', enum: ['PRODUCT_CREATED', 'PROMOTION_ENDING', 'STORE_VERIFIED', 'PROMOTION_CREATED', 'SUBSCRIPTION_AVAILABLE', 'CONSUMER_WELCOME'] },
-          title: { type: 'string' },
-          message: { type: 'string' },
-          read: { type: 'boolean' },
-          createdAt: { type: 'string', format: 'date-time' },
-          readAt: { type: 'string', format: 'date-time', nullable: true }
-        }
-      }
-    }
+    type: [NotificationResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async getUserNotifications(
@@ -160,16 +147,7 @@ export class NotificationController {
   @ApiBody({ type: CreateNotificationDto })
   @ApiCreatedResponse({ 
     description: 'Notification created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        type: { type: 'string' },
-        title: { type: 'string' },
-        message: { type: 'string' }
-      }
-    }
+    type: NotificationResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -209,14 +187,7 @@ export class NotificationController {
   })
   @ApiOkResponse({ 
     description: 'Notification marked as read successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        read: { type: 'boolean', example: true },
-        readAt: { type: 'string', format: 'date-time' }
-      }
-    }
+    type: NotificationResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiNotFoundResponse({ 
@@ -288,13 +259,7 @@ export class NotificationController {
   })
   @ApiOkResponse({ 
     description: 'Notification deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        title: { type: 'string' }
-      }
-    }
+    type: NotificationResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiNotFoundResponse({ 

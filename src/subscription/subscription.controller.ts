@@ -33,6 +33,7 @@ import { UpdateSubscriptionDTO } from './dto/update-subscription.dto';
 import { JoinSubscriptionDTO } from './dto/join-subscription.dto';
 import { UpdateRetailerSubscriptionDTO } from './dto/update-retailer-subscription.dto';
 import { SubscriptionAnalyticsDTO } from './dto/subscription-analytics.dto';
+import { SubscriptionResponseDto, UserSubscriptionResponseDto } from './dto/subscription-response.dto';
 import {
   Prisma,
   Subscription,
@@ -123,20 +124,7 @@ export class SubscriptionController {
   })
   @ApiOkResponse({ 
     description: 'Returns paginated list of subscription plans',
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          name: { type: 'string' },
-          plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] },
-          price: { type: 'string' },
-          billingCycle: { type: 'string', enum: ['MONTHLY', 'YEARLY'] },
-          isActive: { type: 'boolean' }
-        }
-      }
-    }
+    type: [SubscriptionResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiBadRequestResponse({ 
@@ -222,24 +210,7 @@ export class SubscriptionController {
   })
   @ApiOkResponse({ 
     description: 'Returns the active user subscription with plan details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        status: { type: 'string', enum: ['ACTIVE', 'CANCELLED', 'EXPIRED', 'PENDING'] },
-        price: { type: 'string' },
-        billingCycle: { type: 'string', enum: ['MONTHLY', 'YEARLY'] },
-        subscription: {
-          type: 'object',
-          properties: {
-            id: { type: 'number' },
-            name: { type: 'string' },
-            plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] }
-          }
-        }
-      }
-    }
+    type: UserSubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -313,19 +284,7 @@ export class SubscriptionController {
   })
   @ApiOkResponse({ 
     description: 'Returns subscription plan details',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        description: { type: 'string', nullable: true },
-        plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] },
-        price: { type: 'string' },
-        billingCycle: { type: 'string', enum: ['MONTHLY', 'YEARLY'] },
-        isActive: { type: 'boolean' },
-        benefits: { type: 'string', nullable: true }
-      }
-    }
+    type: SubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -397,16 +356,7 @@ export class SubscriptionController {
   @ApiBody({ type: CreateSubscriptionDTO })
   @ApiCreatedResponse({ 
     description: 'Subscription plan created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] },
-        price: { type: 'string' },
-        isActive: { type: 'boolean' }
-      }
-    }
+    type: SubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -479,15 +429,7 @@ export class SubscriptionController {
   @ApiBody({ type: UpdateSubscriptionDTO })
   @ApiOkResponse({ 
     description: 'Subscription plan updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' },
-        plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] },
-        price: { type: 'string' }
-      }
-    }
+    type: SubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -579,13 +521,7 @@ export class SubscriptionController {
   })
   @ApiOkResponse({ 
     description: 'Subscription plan deleted successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        name: { type: 'string' }
-      }
-    }
+    type: SubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -655,24 +591,7 @@ export class SubscriptionController {
   @ApiBody({ type: JoinSubscriptionDTO })
   @ApiCreatedResponse({ 
     description: 'Subscription joined successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        status: { type: 'string', example: 'ACTIVE' },
-        price: { type: 'string' },
-        billingCycle: { type: 'string', enum: ['MONTHLY', 'YEARLY'] },
-        subscription: {
-          type: 'object',
-          properties: {
-            id: { type: 'number' },
-            name: { type: 'string' },
-            plan: { type: 'string', enum: ['FREE', 'BASIC', 'PREMIUM'] }
-          }
-        }
-      }
-    }
+    type: UserSubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -733,21 +652,7 @@ export class SubscriptionController {
   @ApiBody({ type: UpdateRetailerSubscriptionDTO })
   @ApiOkResponse({ 
     description: 'Subscription updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        status: { type: 'string', example: 'ACTIVE' },
-        subscription: {
-          type: 'object',
-          properties: {
-            id: { type: 'number' },
-            name: { type: 'string' }
-          }
-        }
-      }
-    }
+    type: UserSubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
@@ -805,22 +710,7 @@ export class SubscriptionController {
   })
   @ApiOkResponse({ 
     description: 'Subscription cancelled successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        userId: { type: 'number' },
-        status: { type: 'string', example: 'CANCELLED' },
-        cancelledAt: { type: 'string', format: 'date-time' },
-        subscription: {
-          type: 'object',
-          properties: {
-            id: { type: 'number' },
-            name: { type: 'string' }
-          }
-        }
-      }
-    }
+    type: UserSubscriptionResponseDto
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
