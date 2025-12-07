@@ -1,6 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { SubscriptionPlan, SubscriptionStatus, BillingCycle } from 'generated/prisma';
 
+/**
+ * Subscription Count by Plan
+ * 
+ * Represents the count of subscriptions grouped by plan type.
+ */
 export class SubscriptionCountByPlan {
   @ApiProperty({ enum: SubscriptionPlan })
   plan: SubscriptionPlan;
@@ -9,6 +14,11 @@ export class SubscriptionCountByPlan {
   count: number;
 }
 
+/**
+ * Subscription Count by Status
+ * 
+ * Represents the count of subscriptions grouped by status.
+ */
 export class SubscriptionCountByStatus {
   @ApiProperty({ enum: SubscriptionStatus })
   status: SubscriptionStatus;
@@ -17,6 +27,11 @@ export class SubscriptionCountByStatus {
   count: number;
 }
 
+/**
+ * Subscription Count by Billing Cycle
+ * 
+ * Represents the count of subscriptions grouped by billing cycle.
+ */
 export class SubscriptionCountByBillingCycle {
   @ApiProperty({ enum: BillingCycle })
   billingCycle: BillingCycle;
@@ -25,6 +40,12 @@ export class SubscriptionCountByBillingCycle {
   count: number;
 }
 
+/**
+ * Subscription Analytics Data Transfer Object
+ * 
+ * Comprehensive analytics data for subscription management dashboard.
+ * Includes counts, revenue metrics, and trend information.
+ */
 export class SubscriptionAnalyticsDTO {
   @ApiProperty({ description: 'Total number of subscriptions', example: 100 })
   total: number;

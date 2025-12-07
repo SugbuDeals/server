@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, Store } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { NotificationService } from 'src/notification/notification.service';
@@ -9,6 +9,8 @@ import { NotificationService } from 'src/notification/notification.service';
  */
 @Injectable()
 export class StoreService {
+  private readonly logger = new Logger(StoreService.name);
+
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
@@ -47,6 +49,28 @@ export class StoreService {
     return this.prisma.store.findMany({ skip, take, cursor, where, orderBy });
   }
 
+  /**
+   * Finds stores within a specified radius of given coordinates.
+   * 
+   * Uses the Haversine formula to calculate the great-circle distance between
+   * the search point and each store's location. Returns stores sorted by distance
+   * (closest first), up to a maximum of 50 results.
+   * 
+   * The Haversine formula calculates distances on a sphere (Earth) and is accurate
+   * for most use cases. Distance is returned in kilometers.
+   * 
+   * @param latitude - Latitude of the search center point (in decimal degrees, -90 to 90)
+   * @param longitude - Longitude of the search center point (in decimal degrees, -180 to 180)
+   * @param radiusKm - Search radius in kilometers (default: 10km)
+   * @returns Promise resolving to an array of stores with a calculated 'distance' field (in km)
+   * 
+   * @example
+   * ```typescript
+   * // Find stores within 5km of Cebu City
+   * const stores = await storeService.findNearby(10.3157, 123.8854, 5);
+   * // Returns: [{ id: 1, name: 'Store A', distance: 2.5, ... }, ...]
+   * ```
+   */
   async findNearby(
   latitude: number,
   longitude: number,
@@ -75,25 +99,33 @@ export class StoreService {
 
   /**
    * Creates a new store in the database.
+   * 
+   * After creating the store, automatically sends notifications:
+   * - To the retailer: Store is under review
+   * - To all admins: New store created and awaiting approval
+   * 
    * @param params.data - The data for creating the store
    * @returns Promise resolving to the newly created store
+   * @throws {PrismaClientKnownRequestError} If store creation fails (e.g., duplicate owner)
    */
   async create(params: { data: Prisma.StoreCreateInput }): Promise<Store> {
     const { data } = params;
     const store = await this.prisma.store.create({ data });
 
+    this.logger.log(`Store created - Store ID: ${store.id}, Name: ${store.name}, Owner ID: ${store.ownerId}`);
+
     // Notify retailer that store is under review
     this.notificationService
       .notifyStoreUnderReview(store.id)
       .catch((err: unknown) => {
-        console.error('Error creating store review notification:', err);
+        this.logger.error(`Error creating store review notification for store ${store.id}:`, err);
       });
 
     // Notify all admins that a store was created
     this.notificationService
       .notifyAdminStoreCreated(store.id)
       .catch((err: unknown) => {
-        console.error('Error creating admin store notification:', err);
+        this.logger.error(`Error creating admin store notification for store ${store.id}:`, err);
       });
 
     return store;

@@ -6,6 +6,27 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 dotenv.config();
 
+/**
+ * Bootstrap function
+ * 
+ * Initializes and starts the NestJS application. This function:
+ * - Creates the NestJS application instance
+ * - Configures CORS for cross-origin requests
+ * - Sets up Swagger/OpenAPI documentation (if enabled)
+ * - Configures global validation pipes
+ * - Starts the HTTP server on the configured port
+ * 
+ * @returns Promise that resolves when the server is listening
+ * @throws {Error} If application startup fails (e.g., port already in use, database connection failure)
+ * 
+ * @example
+ * ```typescript
+ * bootstrap().catch((error) => {
+ *   console.error('Application failed to start:', error);
+ *   process.exit(1);
+ * });
+ * ```
+ */
 async function bootstrap() {
   
   const app = await NestFactory.create(AppModule);
@@ -18,7 +39,21 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Only generate Swagger docs if not explicitly disabled (helps with memory on low-resource servers)
+  /**
+   * Swagger/OpenAPI Documentation Configuration
+   * 
+   * Sets up interactive API documentation at /api endpoint. The documentation
+   * can be disabled by setting DISABLE_SWAGGER=true in environment variables,
+   * which is useful for low-memory server environments.
+   * 
+   * Features:
+   * - JWT Bearer token authentication support
+   * - Organized API tags for different resource groups
+   * - Interactive API testing interface
+   * 
+   * If Swagger generation fails (e.g., due to memory constraints), the application
+   * will continue to run without documentation.
+   */
   if (process.env.DISABLE_SWAGGER !== 'true') {
     try {
       const options = new DocumentBuilder()
@@ -52,7 +87,13 @@ async function bootstrap() {
     }
   }
 
+  // Global validation pipe for automatic DTO validation
   app.useGlobalPipes(new ValidationPipe());
-  await app.listen(process.env.PORT ?? 3000);
+  
+  // Start the HTTP server
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  console.log(`Application is running on: http://localhost:${port}`);
 }
+
 bootstrap();

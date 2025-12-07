@@ -12,6 +12,24 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { RolesGuard } from './roles.guard';
 
+/**
+ * Authentication Module
+ * 
+ * Provides authentication and authorization functionality for the application.
+ * 
+ * Features:
+ * - User registration and login
+ * - JWT token generation and validation
+ * - Local authentication strategy (email/password)
+ * - JWT authentication strategy
+ * - Role-based access control (RBAC)
+ * 
+ * The module configures JWT with different expiration times based on environment:
+ * - Development: 10 hours
+ * - Production: 60 seconds (for security)
+ * 
+ * Exports guards and strategies that can be used by other modules.
+ */
 @Module({
   imports: [
     UsersModule,

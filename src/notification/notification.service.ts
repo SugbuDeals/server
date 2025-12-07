@@ -9,12 +9,36 @@ import {
 } from 'generated/prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
+/**
+ * Notification Service
+ * 
+ * Provides notification management operations for the application.
+ * Handles creating, retrieving, and managing user notifications.
+ * 
+ * Features:
+ * - Single and bulk notification creation
+ * - User notification retrieval with filtering and pagination
+ * - Mark notifications as read/unread
+ * - Delete notifications
+ * - Specialized notification methods for various events (product created, promotion ending, etc.)
+ * 
+ * Notification Types:
+ * - Product-related: New products, price changes, stock updates
+ * - Promotion-related: New promotions, promotions ending soon, promotions ended
+ * - Store-related: Store verification, store under review
+ * - Subscription-related: New subscriptions available, subscriptions ending soon, expired
+ * - User-related: Welcome messages, account updates
+ */
 @Injectable()
 export class NotificationService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Creates a single notification
+   * Creates a single notification for a user.
+   * 
+   * @param data - Notification creation data
+   * @returns Promise resolving to the created notification
+   * @throws {PrismaClientKnownRequestError} If notification creation fails
    */
   async createNotification(
     data: CreateNotificationDto,
@@ -33,7 +57,17 @@ export class NotificationService {
   }
 
   /**
-   * Creates multiple notifications for multiple users
+   * Creates multiple notifications for multiple users in a single operation.
+   * 
+   * This is more efficient than creating notifications one by one.
+   * Returns an empty array if no user IDs are provided.
+   * 
+   * @param userIds - Array of user IDs to create notifications for
+   * @param type - Type of notification
+   * @param title - Notification title
+   * @param message - Notification message
+   * @param metadata - Optional metadata (productId, storeId, promotionId)
+   * @returns Promise resolving to an array of created notifications
    */
   async createNotificationsForUsers(
     userIds: number[],
@@ -64,7 +98,16 @@ export class NotificationService {
   }
 
   /**
-   * Gets notifications for a user
+   * Retrieves notifications for a user with optional filtering and pagination.
+   * 
+   * Results are ordered by creation date (newest first).
+   * 
+   * @param userId - ID of the user whose notifications to retrieve
+   * @param params - Optional query parameters
+   * @param params.skip - Number of records to skip for pagination
+   * @param params.take - Number of records to return
+   * @param params.read - Filter by read status (true for read, false for unread, undefined for all)
+   * @returns Promise resolving to an array of notifications
    */
   async getUserNotifications(
     userId: number,
@@ -90,7 +133,15 @@ export class NotificationService {
   }
 
   /**
-   * Marks a notification as read
+   * Marks a notification as read for a specific user.
+   * 
+   * Sets the read flag to true and records the read timestamp.
+   * Users can only mark their own notifications as read.
+   * 
+   * @param notificationId - ID of the notification to mark as read
+   * @param userId - ID of the user (for authorization check)
+   * @returns Promise resolving to the updated notification
+   * @throws {PrismaClientKnownRequestError} If notification not found or doesn't belong to user
    */
   async markAsRead(notificationId: number, userId: number): Promise<Notification> {
     return this.prisma.notification.update({

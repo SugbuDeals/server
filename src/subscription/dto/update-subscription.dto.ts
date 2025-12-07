@@ -9,6 +9,12 @@ import {
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { SubscriptionPlan, BillingCycle } from 'generated/prisma';
 
+/**
+ * Update Subscription Data Transfer Object
+ * 
+ * DTO for updating existing subscription plans.
+ * All fields are optional - only provided fields will be updated.
+ */
 export class UpdateSubscriptionDTO {
   @ApiPropertyOptional({
     description: 'Display name of the subscription',

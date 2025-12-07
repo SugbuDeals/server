@@ -6,7 +6,12 @@ import { existsSync, mkdirSync } from 'fs';
 import { FileController } from './file.controller';
 import { ConfigModule } from '@nestjs/config';
 
-// Export shared constant
+/**
+ * Upload path constant
+ * 
+ * Defines the directory where uploaded files are stored.
+ * Defaults to 'uploads' directory in the project root.
+ */
 export const UPLOAD_PATH = join(process.cwd(), 'uploads');
 
 // Ensure directory exists
@@ -14,6 +19,19 @@ if (!existsSync(UPLOAD_PATH)) {
   mkdirSync(UPLOAD_PATH, { recursive: true });
 }
 
+/**
+ * File Module
+ * 
+ * Provides file upload and management functionality.
+ * 
+ * Configuration:
+ * - Storage: Disk storage in 'uploads' directory
+ * - File naming: Unique suffixes to prevent conflicts
+ * - Maximum file size: 100MB
+ * - File serving: Public access via GET endpoint
+ * 
+ * The module automatically creates the uploads directory if it doesn't exist.
+ */
 @Module({
   imports: [
     ConfigModule,

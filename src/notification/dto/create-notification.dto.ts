@@ -3,6 +3,12 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationType } from 'generated/prisma';
 
+/**
+ * Create Notification Data Transfer Object
+ * 
+ * DTO for creating new notifications.
+ * Notifications can be related to products, stores, or promotions.
+ */
 export class CreateNotificationDto {
   @ApiProperty({ description: 'User ID to send notification to', type: Number })
   @IsNumber()

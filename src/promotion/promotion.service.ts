@@ -7,6 +7,18 @@ import {
   isQuestionablePromotionDiscount,
 } from 'src/notification/utils/pricing-validation.util';
 
+/**
+ * Promotion Service
+ * 
+ * Provides promotion data access and manipulation operations.
+ * Handles CRUD operations for product promotions and deals.
+ * 
+ * Features:
+ * - Automatic notification triggers for promotion creation
+ * - Questionable discount detection and admin alerts
+ * - Active promotion filtering based on date ranges
+ * - Bookmark notifications when promotions are created
+ */
 @Injectable()
 export class PromotionService {
   constructor(
@@ -14,6 +26,17 @@ export class PromotionService {
     private notificationService: NotificationService,
   ) {}
 
+  /**
+   * Creates a new promotion.
+   * 
+   * After creation, automatically:
+   * - Checks for questionable discount pricing and notifies admins if detected
+   * - Notifies users who bookmarked the product or store about the new promotion
+   * 
+   * @param createPromotionDto - The data for creating the promotion
+   * @returns Promise resolving to the newly created promotion (with product relation)
+   * @throws {PrismaClientKnownRequestError} If promotion creation fails
+   */
   async create(createPromotionDto: CreatePromotionDto) {
     const promotion = await this.prisma.promotion.create({
       data: createPromotionDto,
@@ -61,16 +84,35 @@ export class PromotionService {
     return promotion;
   }
 
+  /**
+   * Retrieves all promotions from the database.
+   * 
+   * @returns Promise resolving to an array of all promotions
+   */
   findAll() {
     return this.prisma.promotion.findMany();
   }
 
+  /**
+   * Retrieves a single promotion by its ID.
+   * 
+   * @param id - Promotion ID
+   * @returns Promise resolving to the found promotion or null if not found
+   */
   findOne(id: number) {
     return this.prisma.promotion.findUnique({
       where: { id },
     });
   }
 
+  /**
+   * Updates an existing promotion in the database.
+   * 
+   * @param id - Promotion ID to update
+   * @param updatePromotionDto - The data to update the promotion with
+   * @returns Promise resolving to the updated promotion
+   * @throws {PrismaClientKnownRequestError} If the promotion is not found
+   */
   update(id: number, updatePromotionDto: UpdatePromotionDto) {
     return this.prisma.promotion.update({
       where: { id },
@@ -78,12 +120,29 @@ export class PromotionService {
     });
   }
 
+  /**
+   * Deletes a promotion from the database.
+   * 
+   * @param id - Promotion ID to delete
+   * @returns Promise resolving to the deleted promotion
+   * @throws {PrismaClientKnownRequestError} If the promotion is not found
+   */
   remove(id: number) {
     return this.prisma.promotion.delete({
       where: { id },
     });
   }
 
+  /**
+   * Finds all active promotions.
+   * 
+   * A promotion is considered active if:
+   * - The active flag is true
+   * - The current date is on or after startsAt
+   * - Either endsAt is null OR the current date is before or equal to endsAt
+   * 
+   * @returns Promise resolving to an array of active promotions
+   */
   findActive() {
     const now = new Date();
     return this.prisma.promotion.findMany({
