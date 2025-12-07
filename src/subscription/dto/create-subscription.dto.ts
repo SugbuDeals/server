@@ -10,6 +10,12 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SubscriptionPlan, BillingCycle } from 'generated/prisma';
 
+/**
+ * Create Subscription Data Transfer Object
+ * 
+ * DTO for creating new subscription plans (admin-defined templates).
+ * Subscription plans are templates that retailers can subscribe to.
+ */
 export class CreateSubscriptionDTO {
   @ApiProperty({
     description: 'Display name of the subscription',

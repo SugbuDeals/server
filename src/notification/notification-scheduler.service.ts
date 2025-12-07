@@ -61,8 +61,16 @@ export class NotificationSchedulerService {
   }
 
   /**
-   * Check for promotions ending soon (within 24 hours)
-   * Uses cursor-based pagination and batch processing
+   * Check for promotions ending soon (within 24 hours).
+   * 
+   * Uses cursor-based pagination and batch processing to efficiently
+   * process promotions and notify users who bookmarked the products.
+   * 
+   * Optimization details:
+   * - Only fetches minimal fields needed
+   * - Processes in batches of BATCH_SIZE
+   * - Creates notifications in batches of NOTIFICATION_BATCH_SIZE
+   * - Skips promotions that already have ending soon notifications
    */
   private async checkPromotionsEndingSoon(): Promise<void> {
     this.logger.log('Checking promotions ending soon...');

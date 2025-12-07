@@ -13,6 +13,19 @@ import { FileModule } from './file/file.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { NotificationModule } from './notification/notification.module';
 
+/**
+ * Application Root Module
+ * 
+ * The root module of the NestJS application that imports and configures all feature modules.
+ * This module serves as the entry point for dependency injection and module organization.
+ * 
+ * Features:
+ * - ScheduleModule: Enables cron jobs and scheduled tasks
+ * - All feature modules: Auth, Users, Stores, Products, Categories, Promotions,
+ *   Bookmarks, AI, Files, Subscriptions, and Notifications
+ * 
+ * The PrismaModule is imported to provide database access throughout the application.
+ */
 @Module({
   imports: [
     ScheduleModule.forRoot(),

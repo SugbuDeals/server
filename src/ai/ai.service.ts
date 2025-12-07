@@ -6,6 +6,23 @@ import { PromotionService } from '../promotion/promotion.service';
 import { Product, Store } from 'generated/prisma';
 import { StoreService } from '../store/store.service';
 
+/**
+ * AI Service
+ * 
+ * Provides AI-powered features using the Groq SDK.
+ * Handles chat interactions, text generation, and intelligent product/store/promotion recommendations.
+ * 
+ * Features:
+ * - Natural language chat with AI assistant
+ * - Text generation for various purposes
+ * - Intelligent product recommendations based on user queries
+ * - Store recommendations with location-based filtering
+ * - Promotion recommendations
+ * - Intent classification to determine user's request type
+ * 
+ * The service uses Groq's API with configurable model (default: llama2-70b-4096).
+ * Requires GROQ_API_KEY environment variable.
+ */
 @Injectable()
 export class AiService implements OnModuleInit {
   private groq: Groq;

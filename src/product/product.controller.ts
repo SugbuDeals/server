@@ -20,29 +20,74 @@ import {
   ApiQuery,
   ApiTags,
   ApiBearerAuth,
+  ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiCreatedResponse,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { ProductService } from './product.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CreateProductDTO } from './dto/createProduct.dto';
 import { UpdateProductDTO } from './dto/updateProduct.dto';
 import { UpdateProductStatusDTO } from './dto/updateProductStatus.dto';
+import { ProductResponseDto } from './dto/product-response.dto';
 import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
 
+/**
+ * Product Controller
+ * 
+ * Handles HTTP requests for product management operations.
+ * Provides endpoints for creating, reading, updating, and deleting products.
+ * 
+ * Access Control:
+ * - All authenticated users can view products
+ * - Only retailers and admins can create/update/delete products
+ * - Admins can enable/disable products
+ */
 @ApiTags('Products')
 @Controller('product')
 export class ProductController {
   constructor(private productService: ProductService) {}
 
+  /**
+   * Retrieves a list of products with optional filtering.
+   * 
+   * Supports filtering by store ID and active status.
+   * 
+   * @param storeId - Optional store ID to filter products by store
+   * @param isActive - Optional filter for active/inactive products
+   * @returns Array of product objects matching the criteria
+   */
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'List products with optional filters' })
-  @ApiQuery({ name: 'storeId', required: false, type: Number })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
-  @ApiOkResponse({ description: 'Returns list of products' })
+  @ApiOperation({ 
+    summary: 'List products with optional filters',
+    description: 'Retrieves a list of products. Supports optional filtering by store ID and active status.'
+  })
+  @ApiQuery({ 
+    name: 'storeId', 
+    required: false, 
+    type: Number,
+    description: 'Filter products by store ID',
+    example: 1
+  })
+  @ApiQuery({ 
+    name: 'isActive', 
+    required: false, 
+    type: Boolean,
+    description: 'Filter by active status (true/false)',
+    example: true
+  })
+  @ApiOkResponse({ 
+    description: 'Returns list of products',
+    type: [ProductResponseDto]
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findManyProducts(
     @Query('storeId') storeId?: string,
     @Query('isActive') isActive?: string,
@@ -60,21 +105,78 @@ export class ProductController {
     return this.productService.products({ where });
   }
 
+  /**
+   * Retrieves a single product by its ID.
+   * 
+   * @param id - Product ID
+   * @returns Product object or null if not found
+   */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Get product by id' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Returns a product' })
+  @ApiOperation({ 
+    summary: 'Get product by id',
+    description: 'Retrieves detailed information about a specific product by its ID.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    type: Number,
+    description: 'Product ID',
+    example: 1
+  })
+  @ApiOkResponse({ 
+    description: 'Returns product details. May return null if product not found (status 200 with null body).',
+    type: ProductResponseDto
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   async findUniqueProduct(@Param('id') id: string) {
     return this.productService.product({ id: Number(id) });
   }
 
+  /**
+   * Creates a new product.
+   * 
+   * After creation, automatically:
+   * - Checks for questionable pricing and notifies admins if detected
+   * - Notifies users who bookmarked the store about the new product
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param createProductDto - Product creation data
+   * @returns Created product object
+   */
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Create a product' })
+  @ApiOperation({ 
+    summary: 'Create a product',
+    description: 'Creates a new product. Restricted to retailers and admins. Automatically notifies store bookmarks and checks for questionable pricing.'
+  })
   @ApiBody({ type: CreateProductDTO })
+  @ApiCreatedResponse({ 
+    description: 'Product created successfully',
+    type: ProductResponseDto
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({ 
+    description: 'Forbidden - Only retailers and admins can create products',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string' }
+      }
+    }
+  })
+  @ApiBadRequestResponse({ 
+    description: 'Invalid input or validation error',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'array', items: { type: 'string' } }
+      }
+    }
+  })
   @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async createProduct(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
@@ -96,12 +198,51 @@ export class ProductController {
     });
   }
 
+  /**
+   * Updates an existing product.
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param id - Product ID to update
+   * @param updateProductDto - Product update data (all fields optional)
+   * @returns Updated product object
+   */
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Update a product' })
-  @ApiParam({ name: 'id', type: Number })
+  @ApiOperation({ 
+    summary: 'Update a product',
+    description: 'Updates product information. Restricted to retailers and admins.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    type: Number,
+    description: 'Product ID to update',
+    example: 1
+  })
   @ApiBody({ type: UpdateProductDTO })
+  @ApiOkResponse({ 
+    description: 'Product updated successfully',
+    type: ProductResponseDto
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({ 
+    description: 'Forbidden - Only retailers and admins can update products',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 }
+      }
+    }
+  })
+  @ApiBadRequestResponse({ 
+    description: 'Invalid product ID or validation error',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 }
+      }
+    }
+  })
   @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async updateProduct(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
@@ -125,14 +266,57 @@ export class ProductController {
     });
   }
 
+  /**
+   * Enables or disables a product (Admin only).
+   * 
+   * Allows admins to control product visibility by setting the isActive flag.
+   * 
+   * @param req - Request object containing authenticated admin user information
+   * @param id - Product ID to update
+   * @param updateProductStatusDto - Status update data
+   * @returns Updated product object
+   * @throws {BadRequestException} If product ID is invalid
+   * @throws {ForbiddenException} If user is not an admin
+   */
   @Patch(':id/admin-status')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Admin: enable or disable a product' })
-  @ApiParam({ name: 'id', type: Number })
+  @ApiOperation({ 
+    summary: 'Admin: enable or disable a product',
+    description: 'Updates product active status. Restricted to admins only. Used to enable/disable product visibility.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    type: Number,
+    description: 'Product ID to update',
+    example: 1
+  })
   @ApiBody({ type: UpdateProductStatusDTO })
-  @ApiOkResponse({ description: 'Product status updated' })
+  @ApiOkResponse({ 
+    description: 'Product status updated successfully',
+    type: ProductResponseDto
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({ 
+    description: 'Forbidden - Only admins can update product status',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 }
+      }
+    }
+  })
+  @ApiBadRequestResponse({ 
+    description: 'Invalid product ID',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Invalid product id' }
+      }
+    }
+  })
   async updateProductAdminStatus(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('id') id: string,
@@ -153,12 +337,41 @@ export class ProductController {
     });
   }
 
+  /**
+   * Deletes a product.
+   * 
+   * This operation is permanent and cannot be undone.
+   * 
+   * @param id - Product ID to delete
+   * @returns Deleted product object
+   */
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ summary: 'Delete a product' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiOkResponse({ description: 'Product deleted' })
+  @ApiOperation({ 
+    summary: 'Delete a product',
+    description: 'Permanently deletes a product. Restricted to retailers and admins. This operation cannot be undone.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    type: Number,
+    description: 'Product ID to delete',
+    example: 1
+  })
+  @ApiOkResponse({ 
+    description: 'Product deleted successfully',
+    type: ProductResponseDto
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({ 
+    description: 'Forbidden - Only retailers and admins can delete products',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 }
+      }
+    }
+  })
   @Roles(UserRole.RETAILER, UserRole.ADMIN)
   async deleteProduct(@Param('id') id: string) {
     return this.productService.deleteProduct({ id: Number(id) });

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   Prisma,
   Subscription,
@@ -17,11 +17,28 @@ import {
 } from './dto/subscription-analytics.dto';
 
 /**
- * Service responsible for handling subscription-related operations.
- * Provides methods to query and manage subscription data from the database.
+ * Subscription Service
+ * 
+ * Provides subscription plan and user subscription management operations.
+ * Handles CRUD operations for subscription plans (admin-defined templates)
+ * and user subscriptions (retailer subscriptions to plans).
+ * 
+ * Features:
+ * - Subscription plan management (admin-only)
+ * - Retailer subscription joining, updating, and cancellation
+ * - Automatic cancellation of existing subscriptions when joining new ones
+ * - Subscription analytics for admin dashboard
+ * - Notification triggers for new subscription availability
+ * 
+ * Business Rules:
+ * - Retailers can only have one active subscription at a time
+ * - Joining a new subscription automatically cancels the current one
+ * - Subscription plans are templates that retailers subscribe to
  */
 @Injectable()
 export class SubscriptionService {
+  private readonly logger = new Logger(SubscriptionService.name);
+
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
@@ -29,6 +46,11 @@ export class SubscriptionService {
 
   /**
    * Retrieves an admin-defined subscription plan by its unique identifier.
+   * 
+   * @param params - Query parameters
+   * @param params.where - Unique identifier criteria (id)
+   * @param params.include - Related data to include
+   * @returns Promise resolving to the found subscription plan or null if not found
    */
   async subscription(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
@@ -40,6 +62,17 @@ export class SubscriptionService {
 
   /**
    * Retrieves multiple subscription plans.
+   * 
+   * Supports pagination, filtering, sorting, and including related data.
+   * 
+   * @param params - Query parameters for finding subscription plans
+   * @param params.skip - Number of records to skip for pagination
+   * @param params.take - Number of records to return
+   * @param params.cursor - Cursor for cursor-based pagination
+   * @param params.where - Filter conditions
+   * @param params.orderBy - Sorting criteria
+   * @param params.include - Related data to include
+   * @returns Promise resolving to an array of subscription plans
    */
   async subscriptions(params: {
     skip?: number;
@@ -61,7 +94,15 @@ export class SubscriptionService {
   }
 
   /**
-   * Creates a new subscription plan.
+   * Creates a new subscription plan (admin-defined template).
+   * 
+   * After creation, if the plan is active, all retailers are notified
+   * about the new subscription availability.
+   * 
+   * @param params - Create parameters
+   * @param params.data - The data for creating the subscription plan
+   * @returns Promise resolving to the newly created subscription plan
+   * @throws {PrismaClientKnownRequestError} If subscription creation fails
    */
   async createPlan(params: {
     data: Prisma.SubscriptionCreateInput;
@@ -69,12 +110,14 @@ export class SubscriptionService {
     const { data } = params;
     const subscription = await this.prisma.subscription.create({ data });
 
+    this.logger.log(`Subscription plan created - Plan ID: ${subscription.id}, Name: ${subscription.name}, Plan: ${subscription.plan}, Active: ${subscription.isActive}`);
+
     // Notify all retailers about the new subscription
     if (subscription.isActive) {
       this.notificationService
         .notifyNewSubscriptionAvailable(subscription.id)
         .catch((err: unknown) => {
-          console.error('Error creating subscription availability notification:', err);
+          this.logger.error(`Error creating subscription availability notification for plan ${subscription.id}:`, err);
         });
     }
 
@@ -83,6 +126,13 @@ export class SubscriptionService {
 
   /**
    * Updates an existing subscription plan.
+   * 
+   * @param params - Update parameters
+   * @param params.where - Unique identifier of the subscription plan to update
+   * @param params.data - The data to update the subscription plan with
+   * @param params.include - Related data to include in response
+   * @returns Promise resolving to the updated subscription plan
+   * @throws {PrismaClientKnownRequestError} If the subscription plan is not found
    */
   async updatePlan(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
@@ -95,6 +145,14 @@ export class SubscriptionService {
 
   /**
    * Deletes a subscription plan.
+   * 
+   * Note: This does not delete user subscriptions that reference this plan.
+   * User subscriptions maintain a reference to the plan even after deletion.
+   * 
+   * @param params - Delete parameters
+   * @param params.where - Unique identifier of the subscription plan to delete
+   * @returns Promise resolving to the deleted subscription plan
+   * @throws {PrismaClientKnownRequestError} If the subscription plan is not found
    */
   async deletePlan(params: {
     where: Prisma.SubscriptionWhereUniqueInput;
@@ -138,6 +196,12 @@ export class SubscriptionService {
 
   /**
    * Gets the active user subscription for a retailer.
+   * 
+   * Returns the most recently created active subscription for the user.
+   * Retailers can only have one active subscription at a time.
+   * 
+   * @param userId - The user ID to get the active subscription for
+   * @returns Promise resolving to the active user subscription (with plan details) or null if none exists
    */
   async getActiveUserSubscription(
     userId: number,
@@ -173,12 +237,14 @@ export class SubscriptionService {
     });
 
     if (!templateSubscription || !templateSubscription.isActive) {
+      this.logger.warn(`Subscription join failed: Subscription not available - User ID: ${userId}, Subscription ID: ${subscriptionId}`);
       throw new BadRequestException('Subscription not available');
     }
 
     // Ensure retailers only have a single active subscription
     const activeSubscription = await this.getActiveUserSubscription(userId);
     if (activeSubscription) {
+      this.logger.log(`Cancelling existing subscription - User ID: ${userId}, Old Subscription ID: ${activeSubscription.id}`);
       await this.prisma.userSubscription.update({
         where: { id: activeSubscription.id },
         data: {
@@ -188,6 +254,7 @@ export class SubscriptionService {
       });
     }
 
+    this.logger.log(`User joining subscription - User ID: ${userId}, Subscription ID: ${subscriptionId}, Plan: ${templateSubscription.plan}`);
     return this.prisma.userSubscription.create({
       data: {
         price: templateSubscription.price,
@@ -272,9 +339,11 @@ export class SubscriptionService {
     const activeSubscription = await this.getActiveUserSubscription(userId);
 
     if (!activeSubscription) {
+      this.logger.warn(`Subscription cancellation failed: No active subscription - User ID: ${userId}`);
       throw new BadRequestException('No active subscription found');
     }
 
+    this.logger.log(`User cancelling subscription - User ID: ${userId}, Subscription ID: ${activeSubscription.id}`);
     return this.prisma.userSubscription.update({
       where: { id: activeSubscription.id },
       data: {
@@ -288,7 +357,17 @@ export class SubscriptionService {
   }
 
   /**
-   * Gets subscription analytics for admin dashboard.
+   * Gets comprehensive subscription analytics for admin dashboard.
+   * 
+   * Calculates:
+   * - Total subscriptions and counts by status (active, cancelled, expired, pending)
+   * - Counts by plan type (FREE, BASIC, PREMIUM)
+   * - Counts by billing cycle (MONTHLY, YEARLY)
+   * - Total revenue from active subscriptions
+   * - Average subscription price
+   * - Recent subscriptions (last 30 days)
+   * - Subscriptions created this month
+   * 
    * @returns Promise resolving to subscription analytics data
    */
   async getAnalytics(): Promise<SubscriptionAnalyticsDTO> {
