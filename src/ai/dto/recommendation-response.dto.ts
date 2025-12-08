@@ -153,40 +153,63 @@ export class PromotionRecommendationItemDto {
 /**
  * Unified Recommendation Response DTO
  * 
- * Standard response format for all recommendation types.
- * Contains the AI-generated recommendation text, structured data, and intent.
+ * Standard response format for all recommendation types and general chat.
+ * Contains the AI-generated response text, structured data (when applicable), and detected intent.
+ * 
+ * The response structure varies based on intent:
+ * - PRODUCT: Contains `products` array with product recommendations
+ * - STORE: Contains `stores` array with store recommendations
+ * - PROMOTION: Contains `promotions` array with promotion recommendations
+ * - CHAT: Contains only `recommendation` text (no structured data)
+ * 
+ * @example Product Recommendation Response
+ * ```json
+ * {
+ *   "recommendation": "Based on your preferences, I recommend...",
+ *   "intent": "product",
+ *   "products": [...]
+ * }
+ * ```
+ * 
+ * @example General Chat Response
+ * ```json
+ * {
+ *   "recommendation": "Hello! I'm here to help...",
+ *   "intent": "chat"
+ * }
+ * ```
  */
 export class RecommendationResponseDto {
   @ApiProperty({ 
     example: 'Based on your preferences, I recommend the Apple iPhone 15 for its advanced features and performance. Price: ₱599.99. As a similar alternative, consider the Samsung Galaxy S24, Price: ₱549.99 (excellent camera quality).',
-    description: 'AI-generated recommendation text explaining the recommendations'
+    description: 'AI-generated response text. For recommendations, this explains the recommendations. For chat, this is the conversational response.'
   })
   recommendation: string;
 
   @ApiProperty({ 
     enum: RecommendationType,
     example: RecommendationType.PRODUCT,
-    description: 'The detected intent of the user query'
+    description: 'The detected or specified intent of the user query. Can be: product, store, promotion, or chat.'
   })
   intent: RecommendationType;
 
   @ApiPropertyOptional({
     type: [ProductRecommendationItemDto],
-    description: 'Product recommendations (populated when intent is PRODUCT)',
+    description: 'Product recommendations (populated when intent is PRODUCT). Results are sorted by combined relevance and distance score.',
     required: false
   })
   products?: ProductRecommendationItemDto[];
 
   @ApiPropertyOptional({
     type: [StoreRecommendationItemDto],
-    description: 'Store recommendations (populated when intent is STORE)',
+    description: 'Store recommendations (populated when intent is STORE). Results are sorted by combined relevance and distance score.',
     required: false
   })
   stores?: StoreRecommendationItemDto[];
 
   @ApiPropertyOptional({
     type: [PromotionRecommendationItemDto],
-    description: 'Promotion recommendations (populated when intent is PROMOTION)',
+    description: 'Promotion recommendations (populated when intent is PROMOTION). Results are sorted by combined relevance and distance score.',
     required: false
   })
   promotions?: PromotionRecommendationItemDto[];

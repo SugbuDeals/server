@@ -10,7 +10,6 @@ describe('AiController', () => {
 
   const mockAiService = {
     chat: jest.fn(),
-    generateText: jest.fn(),
     getRecommendationsFromQuery: jest.fn(),
     getSimilarProducts: jest.fn(),
   };
@@ -57,26 +56,7 @@ describe('AiController', () => {
     });
   });
 
-  describe('POST /ai/generate', () => {
-    it('should return generated text matching Swagger schema', async () => {
-      const generateRequest = {
-        prompt: 'Generate a product description',
-      };
-
-      const mockResponse = {
-        content: 'Generated product description...',
-      };
-
-      mockAiService.generateText.mockResolvedValue(mockResponse);
-
-      const result = await controller.generateText(generateRequest);
-
-      expect(mockAiService.generateText).toHaveBeenCalledWith(generateRequest.prompt);
-      expect(result).toHaveProperty('content');
-    });
-  });
-
-  describe('POST /ai/recommendations/freeform', () => {
+  describe('POST /ai/recommendations', () => {
     it('should return recommendations matching Swagger schema', async () => {
       const recommendationDto: FreeformRecommendationDto = {
         query: 'Find me electronics',
