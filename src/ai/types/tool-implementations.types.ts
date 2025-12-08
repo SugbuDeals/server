@@ -65,12 +65,25 @@ export interface SearchPromotionsParams {
 }
 
 /**
+ * Parameters for search_similar_products tool
+ * 
+ * Used when the AI calls the search_similar_products tool to find products similar to a given product.
+ * 
+ * @property productId - ID of the product to find similar items for
+ * @property maxResults - Maximum number of similar products to return (1-10, default: 3)
+ */
+export interface SearchSimilarProductsParams {
+  productId: number;
+  maxResults?: number;
+}
+
+/**
  * Result from a tool call execution
  * 
  * Structured return type for tool implementations. Each tool returns
  * the appropriate ID array based on what was searched.
  * 
- * @property productIds - Array of product IDs (from search_products)
+ * @property productIds - Array of product IDs (from search_products or search_similar_products)
  * @property storeIds - Array of store IDs (from search_stores)
  * @property promotionIds - Array of promotion IDs (from search_promotions)
  * @property error - Error message if tool execution failed
@@ -104,6 +117,13 @@ export type SearchStoresTool = (params: SearchStoresParams) => Promise<ToolCallR
 export type SearchPromotionsTool = (params: SearchPromotionsParams) => Promise<ToolCallResult>;
 
 /**
+ * Tool function signature for search_similar_products
+ * 
+ * Type definition for the search_similar_products tool implementation function.
+ */
+export type SearchSimilarProductsTool = (params: SearchSimilarProductsParams) => Promise<ToolCallResult>;
+
+/**
  * Map of available tool functions
  * 
  * Maps tool names to their implementation functions.
@@ -113,6 +133,7 @@ export interface AvailableTools {
   search_products: SearchProductsTool;
   search_stores: SearchStoresTool;
   search_promotions: SearchPromotionsTool;
+  search_similar_products: SearchSimilarProductsTool;
 }
 
 /**
@@ -134,4 +155,11 @@ export interface GroqToolCall {
     arguments: string;
   };
 }
+
+/**
+ * Union type of all tool parameter types
+ * 
+ * Used for type-safe tool argument parsing.
+ */
+export type ToolParams = SearchProductsParams | SearchStoresParams | SearchPromotionsParams | SearchSimilarProductsParams;
 

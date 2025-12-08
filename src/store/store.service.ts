@@ -59,43 +59,56 @@ export class StoreService {
    * The Haversine formula calculates distances on a sphere (Earth) and is accurate
    * for most use cases. Distance is returned in kilometers.
    * 
+   * By default, only returns verified and active stores. Use the optional filters
+   * to customize this behavior.
+   * 
    * @param latitude - Latitude of the search center point (in decimal degrees, -90 to 90)
    * @param longitude - Longitude of the search center point (in decimal degrees, -180 to 180)
    * @param radiusKm - Search radius in kilometers (default: 10km)
+   * @param options - Optional filters for verification status and active status
+   * @param options.onlyVerified - If true, only returns verified stores (default: true)
+   * @param options.onlyActive - If true, only returns active stores (default: true)
    * @returns Promise resolving to an array of stores with a calculated 'distance' field (in km)
    * 
    * @example
    * ```typescript
-   * // Find stores within 5km of Cebu City
+   * // Find verified stores within 5km of Cebu City
    * const stores = await storeService.findNearby(10.3157, 123.8854, 5);
    * // Returns: [{ id: 1, name: 'Store A', distance: 2.5, ... }, ...]
    * ```
    */
   async findNearby(
-  latitude: number,
-  longitude: number,
-  radiusKm: number = 10,
-) {
-  // Haversine formula approximation for nearby stores
-  const stores = await this.prisma.$queryRaw`
-    SELECT * FROM (
-      SELECT *, 
-        ( 6371 * acos( cos( radians(${latitude}) ) 
-        * cos( radians( latitude ) ) 
-        * cos( radians( longitude ) - radians(${longitude}) ) 
-        + sin( radians(${latitude}) ) 
-        * sin( radians( latitude ) ) ) ) AS distance 
-      FROM "Store" 
-      WHERE latitude IS NOT NULL 
-        AND longitude IS NOT NULL
-    ) AS stores_with_distance
-    WHERE distance < ${radiusKm}
-    ORDER BY distance
-    LIMIT 50
-  `;
+    latitude: number,
+    longitude: number,
+    radiusKm: number = 10,
+    options?: { onlyVerified?: boolean; onlyActive?: boolean },
+  ) {
+    const onlyVerified = options?.onlyVerified !== false; // Default to true
+    const onlyActive = options?.onlyActive !== false; // Default to true
 
-  return stores;
-}
+    // Haversine formula approximation for nearby stores
+    // Always filter by verified and active stores by default for security and data quality
+    const stores = await this.prisma.$queryRaw<Array<Store & { distance: number }>>`
+      SELECT * FROM (
+        SELECT *, 
+          ( 6371 * acos( cos( radians(${latitude}) ) 
+          * cos( radians( latitude ) ) 
+          * cos( radians( longitude ) - radians(${longitude}) ) 
+          + sin( radians(${latitude}) ) 
+          * sin( radians( latitude ) ) ) ) AS distance 
+        FROM "Store" 
+        WHERE latitude IS NOT NULL 
+          AND longitude IS NOT NULL
+          ${onlyVerified ? Prisma.sql`AND "verificationStatus" = 'VERIFIED'` : Prisma.empty}
+          ${onlyActive ? Prisma.sql`AND "isActive" = true` : Prisma.empty}
+      ) AS stores_with_distance
+      WHERE distance < ${radiusKm}
+      ORDER BY distance
+      LIMIT 50
+    `;
+
+    return stores;
+  }
 
   /**
    * Creates a new store in the database.

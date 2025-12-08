@@ -66,6 +66,7 @@ export interface ToolSchema {
  * - General questions or conversation (use chat mode instead)
  * - Questions about stores (use search_stores instead)
  * - Questions about deals or discounts (use search_promotions instead)
+ * - Finding similar products to a specific product (use search_similar_products instead)
  * 
  * @example
  * User: "I'm looking for budget mechanical keyboards"
@@ -79,7 +80,7 @@ export const searchProductsToolSchema: ToolSchema = {
   type: 'function',
   function: {
     name: 'search_products',
-    description: 'Searches for products that match user preferences and returns product IDs. Use this tool when the user asks about products, items, goods, merchandise, or specific product categories. The tool searches product names and descriptions for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to products from stores within the specified radius and sorted by both relevance and proximity. Always include the user\'s query as-is in the query parameter, and include location coordinates if available.',
+    description: 'Searches for products that match user preferences and returns product IDs. Use this tool when the user asks about products, items, goods, merchandise, or specific product categories. The tool searches product names and descriptions for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to products from verified stores within the specified radius and sorted by both relevance and proximity. Only products from verified stores are returned. Always include the user\'s query as-is in the query parameter, and include location coordinates if available.',
     parameters: {
       type: 'object',
       properties: {
@@ -145,7 +146,7 @@ export const searchStoresToolSchema: ToolSchema = {
   type: 'function',
   function: {
     name: 'search_stores',
-    description: 'Searches for stores that match user preferences and returns store IDs. Use this tool when the user asks about shops, sellers, merchants, retailers, brands, or places to buy from. The tool searches store names and descriptions for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to stores within the specified radius and sorted by both relevance and proximity. Always include the user\'s query as-is in the query parameter, and include location coordinates if available or if the user asks for "nearby" stores.',
+    description: 'Searches for stores that match user preferences and returns store IDs. Use this tool when the user asks about shops, sellers, merchants, retailers, brands, or places to buy from. The tool searches store names and descriptions for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to verified stores within the specified radius and sorted by both relevance and proximity. Only verified stores are returned. Always include the user\'s query as-is in the query parameter, and include location coordinates if available or if the user asks for "nearby" stores.',
     parameters: {
       type: 'object',
       properties: {
@@ -211,7 +212,7 @@ export const searchPromotionsToolSchema: ToolSchema = {
   type: 'function',
   function: {
     name: 'search_promotions',
-    description: 'Searches for active promotions, deals, discounts, vouchers, coupons, or sales that match user preferences and returns promotion IDs. Use this tool when the user asks about deals, discounts, promotions, sales, special offers, or price reductions. The tool searches promotion titles, descriptions, and types for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to promotions from stores within the specified radius and sorted by both relevance and proximity. Always include the user\'s query as-is in the query parameter, and include location coordinates if available or if the user asks for "nearby" deals.',
+    description: 'Searches for active promotions, deals, discounts, vouchers, coupons, or sales that match user preferences and returns promotion IDs. Use this tool when the user asks about deals, discounts, promotions, sales, special offers, or price reductions. The tool searches promotion titles, descriptions, and types for matching keywords. When user coordinates (latitude/longitude) are provided, results are filtered to promotions from verified stores within the specified radius and sorted by both relevance and proximity. Only promotions from verified stores are returned. Always include the user\'s query as-is in the query parameter, and include location coordinates if available or if the user asks for "nearby" deals.',
     parameters: {
       type: 'object',
       properties: {
@@ -227,13 +228,13 @@ export const searchPromotionsToolSchema: ToolSchema = {
         },
         latitude: {
           type: 'number',
-          description: 'User\'s latitude coordinate for location-based filtering. Always include this if the user has provided their location or asks for "nearby" or "close" deals. When provided together with longitude, results are filtered to promotions from stores within the specified radius. Must be between -90 and 90. Always provide both latitude and longitude together, never just one.',
+          description: 'User\'s latitude coordinate for location-based filtering. Always include this if the user has provided their location or asks for "nearby" or "close" deals. When provided together with longitude, results are filtered to promotions from verified stores within the specified radius. Must be between -90 and 90. Always provide both latitude and longitude together, never just one.',
           minimum: -90,
           maximum: 90,
         },
         longitude: {
           type: 'number',
-          description: 'User\'s longitude coordinate for location-based filtering. Always include this if the user has provided their location or asks for "nearby" or "close" deals. When provided together with latitude, results are filtered to promotions from stores within the specified radius. Must be between -180 and 180. Always provide both latitude and longitude together, never just one.',
+          description: 'User\'s longitude coordinate for location-based filtering. Always include this if the user has provided their location or asks for "nearby" or "close" deals. When provided together with latitude, results are filtered to promotions from verified stores within the specified radius. Must be between -180 and 180. Always provide both latitude and longitude together, never just one.',
           minimum: -180,
           maximum: 180,
         },
@@ -250,13 +251,62 @@ export const searchPromotionsToolSchema: ToolSchema = {
 };
 
 /**
+ * Search Similar Products Tool Schema
+ * 
+ * Tool for finding products similar to a given product.
+ * 
+ * Use this tool when:
+ * - User asks for "similar products", "alternatives", "other options like this"
+ * - User mentions a specific product ID and asks for similar items
+ * - User asks "what else is like this product" or "show me alternatives"
+ * - User wants to compare or find substitutes for a product
+ * 
+ * Do NOT use this tool for:
+ * - General product searches (use search_products instead)
+ * - Questions about stores (use search_stores instead)
+ * - Questions about deals (use search_promotions instead)
+ * 
+ * @example
+ * User: "Show me products similar to product 42"
+ * → Call search_similar_products with productId: 42
+ * 
+ * @example
+ * User: "What are alternatives to this laptop?"
+ * → Call search_similar_products with productId from context
+ */
+export const searchSimilarProductsToolSchema: ToolSchema = {
+  type: 'function',
+  function: {
+    name: 'search_similar_products',
+    description: 'Finds products similar to a given product and returns product IDs. Use this tool when the user asks for similar products, alternatives, or other options like a specific product. The tool analyzes product features, price range, and characteristics to find similar items. Only products from verified stores are returned. Always include the product ID that the user is asking about.',
+    parameters: {
+      type: 'object',
+      properties: {
+        productId: {
+          type: 'integer',
+          description: 'The ID of the product to find similar items for. Extract this from the user\'s query or conversation context. Must be a valid product ID.',
+          minimum: 1,
+        },
+        maxResults: {
+          type: 'integer',
+          description: 'Maximum number of similar products to return. Range: 1-10. Default is 3 if not specified. Use a higher number (5-10) when the user asks for "many" or "all" similar products.',
+          minimum: 1,
+          maximum: 10,
+        },
+      },
+      required: ['productId'],
+    },
+  },
+};
+
+/**
  * Array of all available tool schemas for the AI agent
  * 
  * These tools are provided to the Groq API for local tool calling.
  * The AI model uses these schemas to understand when and how to call each tool.
  * 
  * Following Groq best practices:
- * - Limited to 3 tools (optimal range: 3-5 tools per request)
+ * - Limited to 4 tools (optimal range: 3-5 tools per request)
  * - Clear descriptions guide the model on tool selection
  * - Structured parameters with detailed descriptions
  * 
@@ -266,5 +316,6 @@ export const toolSchemas: ToolSchema[] = [
   searchProductsToolSchema,
   searchStoresToolSchema,
   searchPromotionsToolSchema,
+  searchSimilarProductsToolSchema,
 ];
 
