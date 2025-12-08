@@ -1,7 +1,7 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiUnauthorizedResponse, ApiBadRequestResponse, ApiInternalServerErrorResponse } from '@nestjs/swagger';
 import { AiService } from './ai.service';
-import { ChatRequestDto, TextGenerationDto } from './dto/chat.dto';
+import { ChatRequestDto } from './dto/chat.dto';
 import {
   FreeformRecommendationDto,
   SimilarProductsDto,
@@ -14,14 +14,31 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 /**
  * AI Controller
  * 
- * Handles HTTP requests for AI-powered features.
- * Provides endpoints for chat interactions, text generation, and intelligent recommendations.
+ * Handles HTTP requests for AI-powered features using Groq SDK.
  * 
- * All endpoints require authentication and use the Groq SDK for AI processing.
+ * **Endpoints:**
+ * - `POST /ai/chat` - Multi-turn chat conversations
+ * - `POST /ai/recommendations` - Unified AI agent for Product/Store/Promotion recommendations and General Chat
+ * - `POST /ai/similar-products` - Find similar products to a given product
+ * 
+ * All endpoints require JWT authentication via Bearer token.
+ * 
+ * The recommendations endpoint implements an intelligent AI agent that:
+ * - Automatically detects user intent (Product, Store, Promotion, or Chat)
+ * - Uses structured tool calling following Groq best practices
+ * - Provides location-aware recommendations considering both relevance and distance
+ * - Returns structured responses with AI-generated explanations
+ * 
+ * @see https://console.groq.com/docs/tool-use/local-tool-calling
  */
 @ApiTags('AI')
 @Controller('ai')
 export class AiController {
+  /**
+   * Creates an instance of AiController
+   * 
+   * @param aiService - Injected AI service for handling AI operations
+   */
   constructor(private readonly aiService: AiService) {}
 
   /**
@@ -102,115 +119,85 @@ export class AiController {
   }
 
   /**
-   * Generates text using AI.
+   * Unified AI Agent - Recommendations and Chat
    * 
-   * Takes a prompt and generates text based on it.
-   * Useful for content generation, summaries, descriptions, etc.
+   * Intelligent AI agent endpoint that handles four modes:
+   * 1. **Product Recommendations**: Searches for products matching the query
+   * 2. **Store Recommendations**: Searches for stores matching the query
+   * 3. **Promotion Recommendations**: Searches for active promotions matching the query
+   * 4. **General Chat**: Provides conversational responses for non-shopping queries
    * 
-   * @param request - Text generation request containing prompt
-   * @returns Generated text response
-   */
-  @Post('generate')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('bearer')
-  @ApiOperation({ 
-    summary: 'Generate text using AI',
-    description: 'Generates text based on a provided prompt. Uses Groq SDK for AI processing. Useful for content generation, summaries, descriptions, etc. Requires JWT authentication via Bearer token.'
-  })
-  @ApiBody({ 
-    type: TextGenerationDto,
-    description: 'Text generation request with a prompt',
-    examples: {
-      haiku: {
-        value: {
-          prompt: 'Write a haiku about the sea'
-        }
-      },
-      summary: {
-        value: {
-          prompt: 'Summarize the benefits of renewable energy in 3 sentences'
-        }
-      }
-    }
-  })
-  @ApiOkResponse({ 
-    description: 'Returns generated text response with role and content',
-    type: ChatResponseDto
-  })
-  @ApiUnauthorizedResponse({ 
-    description: 'Unauthorized - Invalid or missing JWT Bearer token',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 401 },
-        message: { type: 'string', example: 'Unauthorized' }
-      }
-    }
-  })
-  @ApiBadRequestResponse({ 
-    description: 'Invalid request - Missing or invalid prompt',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 400 },
-        message: { type: 'string', example: 'Validation failed' },
-        error: { type: 'string', example: 'Bad Request' }
-      }
-    }
-  })
-  @ApiInternalServerErrorResponse({ 
-    description: 'Internal server error - Groq API error or service failure',
-    schema: {
-      type: 'object',
-      properties: {
-        statusCode: { type: 'number', example: 500 },
-        message: { type: 'string', example: 'Groq API error: ...' }
-      }
-    }
-  })
-  async generateText(@Body() request: TextGenerationDto): Promise<ChatResponseDto> {
-    return this.aiService.generateText(request.prompt);
-  }
-
-  /**
-   * Gets intelligent recommendations based on a natural language query.
+   * The agent automatically detects intent from the query, or uses explicit intent if provided.
+   * When location coordinates are provided, results are filtered within the specified radius
+   * and sorted by combined relevance (70%) and distance (30%) scores.
    * 
-   * Uses Groq's local tool calling to search for products, stores, or promotions
-   * based on the user's query. Automatically determines intent and returns
-   * structured recommendations with AI-generated explanation text.
-   * 
-   * @param request - Recommendation request containing query and optional location
-   * @returns Structured recommendations with AI text and data
+   * @param request - Recommendation request with query and optional parameters (location, radius, intent)
+   * @returns Structured recommendation response with AI-generated text and relevant data
+   * @throws {HttpException} If validation fails, tool execution fails, or API errors occur
    */
   @Post('recommendations')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')
   @ApiOperation({ 
-    summary: 'Get AI-powered recommendations using tool calling',
-    description: 'Provides intelligent recommendations based on a natural language query using Groq\'s local tool calling pattern. Automatically classifies intent (product, store, or promotion) and uses appropriate search tools to find relevant results. Returns structured data with AI-generated recommendation text. Supports location-based distance calculation when latitude/longitude are provided. Requires JWT authentication via Bearer token.'
+    summary: 'AI Agent - Unified Recommendations and Chat',
+    description: `Unified AI agent endpoint that intelligently handles four modes:
+    
+**1. Product Recommendations**: Automatically detects when users ask about products, items, or goods. Uses search_products tool to find relevant products. Results are sorted by combined relevance (70%) and distance (30%) when location is provided.
+
+**2. Store Recommendations**: Automatically detects when users ask about shops, sellers, or places to buy. Uses search_stores tool to find relevant stores. Results are sorted by combined relevance (70%) and distance (30%) when location is provided.
+
+**3. Promotion Recommendations**: Automatically detects when users ask about deals, discounts, sales, or promotions. Uses search_promotions tool to find active promotions. Results are sorted by combined relevance (70%) and distance (30%) when location is provided.
+
+**4. General Chat**: Automatically detects general questions, greetings, or conversational queries not related to shopping. Provides conversational responses without tool calling.
+
+The AI agent uses Groq's local tool calling pattern following best practices. When latitude and longitude are provided, results are filtered within the specified search radius (5, 10, or 15km - defaults to 5km) and sorted by a weighted combination of relevance to query and proximity to user. Requires JWT authentication via Bearer token.`
   })
   @ApiBody({ 
     type: FreeformRecommendationDto,
-    description: 'Recommendation request with natural language query and optional parameters',
+    description: 'AI agent request with natural language query. The agent automatically detects intent, or you can specify it explicitly using the intent field.',
     examples: {
-      productQuery: {
+      productRecommendation: {
+        summary: 'Product Recommendation Example',
+        description: 'Automatically detects product intent and searches for relevant products',
         value: {
           query: 'budget mechanical keyboard',
           count: 5
         }
       },
-      storeQuery: {
+      storeRecommendation: {
+        summary: 'Store Recommendation with Location',
+        description: 'Automatically detects store intent and finds nearby stores within 10km radius',
         value: {
           query: 'electronics stores near me',
           count: 3,
           latitude: 10.3157,
-          longitude: 123.8854
+          longitude: 123.8854,
+          radius: 10
         }
       },
-      promotionQuery: {
+      promotionRecommendation: {
+        summary: 'Promotion Recommendation Example',
+        description: 'Automatically detects promotion intent and searches for active deals',
         value: {
           query: 'discounts on smartphones',
           count: 10
+        }
+      },
+      generalChat: {
+        summary: 'General Chat Example',
+        description: 'Automatically detects chat intent and provides conversational response',
+        value: {
+          query: 'Hello! How can you help me?',
+          intent: 'chat'
+        }
+      },
+      explicitProductIntent: {
+        summary: 'Explicit Product Intent',
+        description: 'Forces product recommendation mode even if query is ambiguous',
+        value: {
+          query: 'show me something good',
+          intent: 'product',
+          count: 5
         }
       }
     }
@@ -255,6 +242,8 @@ export class AiController {
       request.count,
       request.latitude,
       request.longitude,
+      request.radius,
+      request.intent,
     );
   }
 
