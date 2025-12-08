@@ -11,9 +11,11 @@ import {
   SearchProductsParams,
   SearchStoresParams,
   SearchPromotionsParams,
+  SearchSimilarProductsParams,
   ToolCallResult,
   GroqToolCall,
 } from './types/tool-implementations.types';
+import { StoreVerificationStatus } from 'generated/prisma';
 import {
   ToolExecutionException,
   ToolCallException,
@@ -60,6 +62,7 @@ export class AiService implements OnModuleInit {
       search_products: this.searchProductsTool.bind(this),
       search_stores: this.searchStoresTool.bind(this),
       search_promotions: this.searchPromotionsTool.bind(this),
+      search_similar_products: this.searchSimilarProductsTool.bind(this),
     };
   }
 
@@ -84,48 +87,490 @@ export class AiService implements OnModuleInit {
   }
 
   /**
-   * Chat with the AI assistant.
+   * Chat with the AI assistant (unified chatbot endpoint).
    * 
-   * Sends a conversation to the AI and receives a response.
-   * Supports multi-turn conversations with message history.
+   * Intelligent chatbot that handles:
+   * - General conversation
+   * - Product recommendations
+   * - Store recommendations
+   * - Promotion recommendations
+   * - Similar products queries
    * 
-   * @param messages - Array of conversation messages
+   * Uses tool calling to intelligently detect user intent and provide structured responses.
+   * All recommendations only include products, stores, and promotions from verified stores.
+   * 
+   * @param content - User's message content
+   * @param latitude - Optional user latitude for location-aware recommendations (-90 to 90)
+   * @param longitude - Optional user longitude for location-aware recommendations (-180 to 180)
+   * @param radius - Optional search radius in kilometers (5, 10, or 15, default: 5)
+   * @param count - Maximum number of results (required, 1-10)
    * @param options - Optional chat parameters (temperature, max_tokens, etc.)
-   * @returns AI chat response message
+   * @returns AI chat response with optional structured data (products/stores/promotions)
    */
   async chat(
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    content: string,
+    latitude: number | undefined,
+    longitude: number | undefined,
+    radius: number | undefined,
+    count: number,
     options?: Partial<{ temperature: number; max_tokens: number; top_p: number; stream: boolean; model: string }>,
   ): Promise<ChatResponseDto> {
-    try {
-      const completion = await this.groq.chat.completions.create({
-        messages,
-        model: options?.model ?? (await this.getModelName()),
-        temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.max_tokens ?? 1000,
-        top_p: options?.top_p ?? 1,
-        stream: options?.stream ?? false,
+    // Validate coordinates if provided
+    if (latitude !== undefined || longitude !== undefined) {
+      if (latitude === undefined || longitude === undefined) {
+        throw new Error('Both latitude and longitude must be provided together');
+      }
+      if (latitude < -90 || latitude > 90) {
+        throw new Error('Latitude must be between -90 and 90');
+      }
+      if (longitude < -180 || longitude > 180) {
+        throw new Error('Longitude must be between -180 and 180');
+      }
+    }
+
+    // Validate radius if provided
+    if (radius !== undefined) {
+      if (![5, 10, 15].includes(radius)) {
+        throw new Error('Radius must be 5, 10, or 15 kilometers');
+      }
+    }
+
+    const maxResults = count;
+
+    // Build system prompt for chatbot with tool calling
+    let systemPrompt = `You are an intelligent shopping assistant chatbot. Your role is to help users find products, stores, and promotions, or engage in general conversation.
+
+INTENT DETECTION GUIDELINES:
+- PRODUCT: Use search_products when users ask about products, items, goods, merchandise, or specific product categories (e.g., "laptops", "smartphones", "find products", "show me items")
+- STORE: Use search_stores when users ask about shops, sellers, merchants, retailers, or places to buy (e.g., "electronics stores", "where can I buy", "find shops")
+- PROMOTION: Use search_promotions when users ask about deals, discounts, sales, promotions, or special offers (e.g., "discounts", "sales", "deals on smartphones")
+- SIMILAR PRODUCTS: Use search_similar_products when users ask for similar products, alternatives, or other options like a specific product (e.g., "show me products similar to product 42", "what are alternatives to this")
+- CHAT: If the query is a general question, greeting, or conversation not related to shopping recommendations, respond conversationally WITHOUT using tools
+
+TOOL USAGE RULES:
+1. Always use the most appropriate tool based on the user's intent
+2. Include the user's exact query or relevant keywords in the tool's query parameter
+3. When location coordinates are provided, ALWAYS include them in tool calls for location-aware results
+4. After getting tool results, provide a natural, conversational explanation of the recommendations
+5. If the query doesn't match product/store/promotion/similar patterns, respond conversationally without tools
+6. When users mention a product ID and ask for similar items, use search_similar_products
+
+RESPONSE STYLE:
+- Be helpful, friendly, and conversational
+- When tool results are returned, provide a GENERIC conversational response that does NOT mention specific product names, store names, or promotion titles
+- The structured data (products/stores/promotions) will be returned separately - your content should be a general message like "I found some great options for you!" or "Here are some recommendations based on your search"
+- Mention distance if location data is available (in general terms, not specific items)
+- If no results found, suggest alternative searches
+- Only recommend products, stores, and promotions from verified stores (this is handled automatically by the tools)
+- CRITICAL: When structured data is present, your content should be generic and conversational. Do NOT list specific products, stores, or promotions in the content text.`;
+
+    if (latitude !== undefined && longitude !== undefined) {
+      const radiusKm = radius || 5;
+      systemPrompt += `\n\nLOCATION CONTEXT: The user has provided their location coordinates (latitude: ${latitude}, longitude: ${longitude}). When using search tools, ALWAYS include these coordinates in your tool calls to prioritize nearby results within a ${radiusKm}km radius. Results will be sorted by both relevance to the query and proximity to the user.`;
+      if (radius !== undefined) {
+        systemPrompt += ` The user has specified a search radius of ${radius}km.`;
+      }
+    }
+
+    // Prepare messages with system prompt
+    const messagesWithSystem: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string; tool_call_id?: string; name?: string }> = [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
+        role: 'user',
+        content: content,
+      },
+    ];
+
+    const maxIterations = 10;
+    let detectedIntent: RecommendationType = RecommendationType.CHAT;
+    let collectedProductIds: number[] = [];
+    let collectedStoreIds: number[] = [];
+    let collectedPromotionIds: number[] = [];
+
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      try {
+        // Call model with tools
+        const response = await this.callWithToolsAndRetry(messagesWithSystem, toolSchemas);
+
+        // Type guard: ensure we have a ChatCompletion (not a Stream)
+        if (!('choices' in response)) {
+          throw new GroqApiException('Unexpected stream response when stream is disabled');
+        }
+
+        // Check if we're done (no tool calls)
+        if (!response.choices[0]?.message.tool_calls || response.choices[0].message.tool_calls.length === 0) {
+          // Final response - extract recommendation text
+          const recommendationText = response.choices[0]?.message.content || 'I found some recommendations for you.';
+          
+          // Determine intent based on collected IDs
+          if (collectedProductIds.length > 0) {
+            detectedIntent = RecommendationType.PRODUCT;
+          } else if (collectedStoreIds.length > 0) {
+            detectedIntent = RecommendationType.STORE;
+          } else if (collectedPromotionIds.length > 0) {
+            detectedIntent = RecommendationType.PROMOTION;
+          } else {
+            // No tool calls and no results - likely general chat
+            detectedIntent = RecommendationType.CHAT;
+            return {
+              content: recommendationText,
+              intent: RecommendationType.CHAT,
+            };
+          }
+
+          // Build structured response with actual data first
+          const structuredResponse = await this.buildChatResponse(
+            '',
+            detectedIntent,
+            collectedProductIds,
+            collectedStoreIds,
+            collectedPromotionIds,
+            maxResults,
+            latitude,
+            longitude,
+          );
+
+          // Regenerate response text based on actual products/stores/promotions returned
+          const regeneratedContent = await this.generateResponseFromData(
+            content,
+            structuredResponse,
+            detectedIntent,
+          );
+
+          return {
+            ...structuredResponse,
+            content: regeneratedContent,
+          };
+        }
+
+        // Add assistant message with tool calls
+        messagesWithSystem.push(response.choices[0].message as never);
+
+        // Execute each tool call
+        for (const toolCall of response.choices[0].message.tool_calls || []) {
+          try {
+            const result = await this.executeToolCall(toolCall as GroqToolCall, latitude, longitude, radius);
+
+            // Collect IDs from results
+            if (result.productIds) {
+              collectedProductIds = [...new Set([...collectedProductIds, ...result.productIds])];
+            }
+            if (result.storeIds) {
+              collectedStoreIds = [...new Set([...collectedStoreIds, ...result.storeIds])];
+            }
+            if (result.promotionIds) {
+              collectedPromotionIds = [...new Set([...collectedPromotionIds, ...result.promotionIds])];
+            }
+
+            // Add tool result to messages
+            messagesWithSystem.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolCall.function.name,
+              content: JSON.stringify(result),
+            });
+          } catch (error) {
+            // Add structured error result for this tool call
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const errorDetails: { error: string; is_error: boolean; tool_name?: string } = {
+              error: errorMessage,
+              is_error: true,
+              tool_name: toolCall.function.name,
+            };
+            
+            this.logger.warn(`Tool call failed: ${toolCall.function.name} - ${errorMessage}`);
+            
+            messagesWithSystem.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolCall.function.name,
+              content: JSON.stringify(errorDetails),
+            });
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Error in tool calling loop: ${errorMessage}`, error);
+        throw new ToolCallException(`Error in tool calling loop: ${errorMessage}`);
+      }
+    }
+
+    // Max iterations reached
+    throw new MaxIterationsException(maxIterations);
+  }
+
+  /**
+   * Builds the final chat response with structured data.
+   * 
+   * Implements combined relevance + distance scoring for location-aware recommendations.
+   * Results are sorted by a weighted combination of:
+   * - Relevance score (70%): Based on keyword matching and semantic relevance
+   * - Distance score (30%): Normalized distance (closer = higher score)
+   * 
+   * **Store Recommendations**: 
+   * - Queries stores by collected store IDs
+   * - Re-applies verification and active filters to ensure data consistency
+   * - Only returns verified and active stores
+   * - Logs warnings if stores are not found despite having store IDs (for debugging)
+   * 
+   * @param content - AI-generated response text
+   * @param intent - Detected intent (product, store, promotion, or chat)
+   * @param productIds - Collected product IDs (already filtered by relevance and verified stores)
+   * @param storeIds - Collected store IDs (already filtered by relevance and verified stores)
+   * @param promotionIds - Collected promotion IDs (already filtered by relevance and verified stores)
+   * @param maxResults - Maximum number of results
+   * @param latitude - Optional user latitude for distance calculation
+   * @param longitude - Optional user longitude for distance calculation
+   * @returns Structured chat response with results sorted by combined score
+   */
+  private async buildChatResponse(
+    content: string,
+    intent: RecommendationType,
+    productIds: number[],
+    storeIds: number[],
+    promotionIds: number[],
+    maxResults: number,
+    latitude?: number,
+    longitude?: number,
+  ): Promise<ChatResponseDto> {
+    const response: ChatResponseDto = {
+      content,
+      intent,
+    };
+
+    // Build product recommendations with relevance + distance scoring
+    if (productIds.length > 0 && intent === RecommendationType.PRODUCT) {
+      const products = await this.productService.products({
+        where: { 
+          id: { in: productIds },
+          isActive: true,
+          store: {
+            verificationStatus: StoreVerificationStatus.VERIFIED,
+            isActive: true,
+          },
+        },
+        include: { store: true },
       });
 
-      if ('choices' in completion) {
-        const message = completion.choices[0]?.message;
-        if (!message) {
-          throw new GroqApiException('No message returned from Groq API');
-        }
-        return {
-          role: message.role as 'user' | 'assistant' | 'system',
-          content: message.content || '',
-        };
+      // Calculate combined scores and sort
+      const productsWithScores = await Promise.all(
+        products.map(async (product) => {
+          let distance: number | null = null;
+          let combinedScore = 1.0; // Default relevance score (products already filtered by relevance)
+          
+          // Type assertion for product with store relation
+          const productWithStore = product as Product & { store: Store | null };
+
+          if (latitude && longitude && productWithStore.store?.latitude && productWithStore.store?.longitude) {
+            distance = this.calculateDistance(
+              latitude,
+              longitude,
+              productWithStore.store.latitude,
+              productWithStore.store.longitude,
+            );
+            
+            // Normalize distance to score (closer = higher score, max distance 50km for normalization)
+            const maxDistance = 50;
+            const normalizedDistance = Math.min(distance / maxDistance, 1);
+            const distanceScore = 1 - normalizedDistance; // Closer = higher score
+            
+            // Combined score: 70% relevance (already 1.0 from filtering) + 30% distance
+            combinedScore = 0.7 * 1.0 + 0.3 * distanceScore;
+          }
+
+          return {
+            product: {
+              id: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price.toString(),
+              imageUrl: product.imageUrl,
+              storeId: product.storeId,
+              storeName: productWithStore.store?.name || null,
+              distance,
+            },
+            score: combinedScore,
+          };
+        }),
+      );
+
+      // Sort by combined score (highest first) and take top results
+      productsWithScores.sort((a, b) => b.score - a.score);
+      response.products = productsWithScores
+        .slice(0, maxResults)
+        .map((item) => item.product);
+    }
+
+    // Build store recommendations with relevance + distance scoring
+    if (storeIds.length > 0 && intent === RecommendationType.STORE) {
+      // Query stores by IDs - stores are already verified from searchStoresTool,
+      // but we re-apply filters to ensure data consistency and handle potential race conditions
+      const stores = await this.storeService.stores({
+        where: { 
+          id: { in: storeIds },
+          verificationStatus: StoreVerificationStatus.VERIFIED,
+          isActive: true,
+        },
+      });
+
+      // Log if stores are not found despite having storeIds (for debugging)
+      if (stores.length === 0 && storeIds.length > 0) {
+        this.logger.warn(
+          `No verified stores found for storeIds: [${storeIds.join(', ')}]. This may indicate stores were unverified or deactivated.`,
+        );
       }
 
-      // If a streaming response was requested, we currently do not support
-      // accumulating streamed chunks in this helper.
-      throw new Error('Streaming responses are not supported by chat() helper yet.');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = (error as { status?: number })?.status;
-      throw new GroqApiException(errorMessage, statusCode);
+      // Calculate combined scores and sort
+      const storesWithScores = await Promise.all(
+        stores.map(async (store) => {
+          let distance: number | null = null;
+          let combinedScore = 1.0; // Default relevance score (stores already filtered by relevance)
+
+          if (latitude && longitude && store.latitude && store.longitude) {
+            distance = this.calculateDistance(
+              latitude,
+              longitude,
+              store.latitude,
+              store.longitude,
+            );
+            
+            // Normalize distance to score (closer = higher score, max distance 50km for normalization)
+            const maxDistance = 50;
+            const normalizedDistance = Math.min(distance / maxDistance, 1);
+            const distanceScore = 1 - normalizedDistance; // Closer = higher score
+            
+            // Combined score: 70% relevance (already 1.0 from filtering) + 30% distance
+            combinedScore = 0.7 * 1.0 + 0.3 * distanceScore;
+          }
+
+          return {
+            store: {
+              id: store.id,
+              name: store.name,
+              description: store.description,
+              imageUrl: store.imageUrl,
+              latitude: store.latitude,
+              longitude: store.longitude,
+              address: store.address,
+              city: store.city,
+              distance,
+            },
+            score: combinedScore,
+          };
+        }),
+      );
+
+      // Sort by combined score (highest first) and take top results
+      storesWithScores.sort((a, b) => b.score - a.score);
+      response.stores = storesWithScores
+        .slice(0, maxResults)
+        .map((item) => item.store);
     }
+
+    // Build promotion recommendations
+    if (promotionIds.length > 0 && intent === RecommendationType.PROMOTION) {
+      const allPromotions = await Promise.all(
+        promotionIds.slice(0, maxResults).map((id) => this.promotionService.findOne(id)),
+      );
+
+      // Filter promotions to only include those from verified stores
+      const verifiedPromotions = await Promise.all(
+        allPromotions
+          .filter((p): p is Promotion => p !== null)
+          .map(async (promo) => {
+            if (!promo.productId) {
+              return null;
+            }
+            const product = await this.productService.product({ id: promo.productId });
+            if (!product || !product.storeId) {
+              return null;
+            }
+            const store = await this.storeService.store({ where: { id: product.storeId } });
+            if (!store || store.verificationStatus !== StoreVerificationStatus.VERIFIED || !store.isActive) {
+              return null;
+            }
+            return promo;
+          })
+      );
+
+      response.promotions = verifiedPromotions
+        .filter((p): p is Promotion => p !== null)
+        .map((promo) => ({
+          id: promo.id,
+          title: promo.title,
+          type: promo.type,
+          description: promo.description,
+          startsAt: promo.startsAt,
+          endsAt: promo.endsAt,
+          discount: promo.discount,
+          productId: promo.productId,
+        }));
+    }
+
+    return response;
+  }
+
+  /**
+   * Generates generic response content when structured data is present.
+   * 
+   * This ensures the content is generic and conversational, without mentioning
+   * specific products/stores/promotions, since those are in the structured data.
+   * 
+   * @param originalContent - Original AI-generated content (may contain specific items)
+   * @param structuredResponse - Response with actual products/stores/promotions
+   * @param intent - Detected intent
+   * @returns Generic conversational content that doesn't mention specific items
+   */
+  private async generateResponseFromData(
+    originalContent: string,
+    structuredResponse: ChatResponseDto,
+    intent: RecommendationType,
+  ): Promise<string> {
+    // If no structured data, return original content
+    if (
+      (!structuredResponse.products || structuredResponse.products.length === 0) &&
+      (!structuredResponse.stores || structuredResponse.stores.length === 0) &&
+      (!structuredResponse.promotions || structuredResponse.promotions.length === 0)
+    ) {
+      return originalContent || 'I couldn\'t find any matching results. Please try a different search.';
+    }
+
+    // Count results for generic message
+    const productCount = structuredResponse.products?.length || 0;
+    const storeCount = structuredResponse.stores?.length || 0;
+    const promotionCount = structuredResponse.promotions?.length || 0;
+    const hasLocation = structuredResponse.products?.some(p => p.distance !== null) || 
+                        structuredResponse.stores?.some(s => s.distance !== null) || false;
+
+    // Generate generic conversational response
+    let genericMessage = '';
+    
+    if (intent === RecommendationType.PRODUCT && productCount > 0) {
+      genericMessage = `I found ${productCount} ${productCount === 1 ? 'product' : 'products'} that match your search`;
+      if (hasLocation) {
+        genericMessage += ' near your location';
+      }
+      genericMessage += '. Check out the recommendations below!';
+    } else if (intent === RecommendationType.STORE && storeCount > 0) {
+      genericMessage = `I found ${storeCount} ${storeCount === 1 ? 'store' : 'stores'} that match your search`;
+      if (hasLocation) {
+        genericMessage += ' near your location';
+      }
+      genericMessage += '. Check out the recommendations below!';
+    } else if (intent === RecommendationType.PROMOTION && promotionCount > 0) {
+      genericMessage = `I found ${promotionCount} ${promotionCount === 1 ? 'promotion' : 'promotions'} that match your search`;
+      if (hasLocation) {
+        genericMessage += ' near your location';
+      }
+      genericMessage += '. Check out the recommendations below!';
+    } else {
+      genericMessage = 'I found some great options for you! Check out the recommendations below.';
+    }
+
+    return genericMessage;
   }
 
   /**
@@ -209,18 +654,9 @@ export class AiService implements OnModuleInit {
     latitude?: number,
     longitude?: number,
   ): Promise<RecommendationResponseDto> {
-    const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-      {
-        role: 'system',
-        content: `You are a helpful shopping assistant. The user is engaging in general conversation. Be friendly, helpful, and conversational. ${latitude !== undefined && longitude !== undefined ? `The user is located at coordinates (${latitude}, ${longitude}) - you can mention this if relevant to the conversation.` : ''}`,
-      },
-      {
-        role: 'user',
-        content: query,
-      },
-    ];
-
-    const response = await this.chat(messages);
+    // For general chat, we'll use a simple chat call without tool calling
+    // Since this is deprecated (we use unified chat endpoint), just return a simple response
+    const response = await this.chat(query, latitude, longitude, undefined, 3);
     
     return {
       recommendation: response.content,
@@ -249,11 +685,21 @@ export class AiService implements OnModuleInit {
 
   /**
    * Returns a summary of all products without AI processing.
+   * Only includes products from verified stores.
    * 
    * @returns Recommendation response with all products listed
    */
   private async listAllProductsSummary(): Promise<RecommendationResponseDto> {
-    const products = await this.productService.products({});
+    const products = await this.productService.products({
+      where: {
+        isActive: true,
+        store: {
+          verificationStatus: StoreVerificationStatus.VERIFIED,
+          isActive: true,
+        },
+      },
+      include: { store: true },
+    });
     const summary = products
       .map((p) => `${p.name} (₱${p.price})`)
       .join(', ');
@@ -261,16 +707,19 @@ export class AiService implements OnModuleInit {
     return {
       recommendation: summary ? `Available products: ${summary}` : 'No products available.',
       intent: RecommendationType.PRODUCT,
-      products: products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: p.price.toString(),
-        imageUrl: p.imageUrl,
-        storeId: p.storeId,
-        storeName: null,
-        distance: null,
-      })),
+      products: products.map((p) => {
+        const productWithStore = p as Product & { store: Store | null };
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: p.price.toString(),
+          imageUrl: p.imageUrl,
+          storeId: p.storeId,
+          storeName: productWithStore.store?.name || null,
+          distance: null,
+        };
+      }),
     };
   }
 
@@ -313,10 +762,16 @@ export class AiService implements OnModuleInit {
       const query = params.query.toLowerCase();
       const radiusKm = params.radius || 5; // Default radius for location filtering
 
-      // Get all products with store information
+      // Get all products with store information, only from verified stores
       const allProducts = await this.productService.products({
         include: { store: true },
-        where: { isActive: true },
+        where: { 
+          isActive: true,
+          store: {
+            verificationStatus: StoreVerificationStatus.VERIFIED,
+            isActive: true,
+          },
+        },
       });
 
       // Simple keyword matching - in production, you might use a more sophisticated search
@@ -366,17 +821,58 @@ export class AiService implements OnModuleInit {
   }
 
   /**
+   * Helper method to match stores against a search query using flexible keyword matching.
+   * 
+   * Matches stores if:
+   * - The full query phrase appears in store name/description, OR
+   * - Any significant keyword (length > 2, not a common word) appears in store name/description
+   * 
+   * @param store - Store to check
+   * @param query - Search query (already lowercased)
+   * @returns True if store matches the query
+   */
+  private matchesStoreQuery(store: Store, query: string): boolean {
+    const searchText = `${store.name} ${store.description}`.toLowerCase();
+    const keywords = query.split(/\s+/).filter((k) => k.length > 0);
+    
+    // Check if full query matches (for phrases like "electronics stores")
+    if (searchText.includes(query)) {
+      return true;
+    }
+    
+    // Check if any significant keyword matches (skip common words)
+    const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'];
+    const significantKeywords = keywords.filter(
+      (k) => k.length > 2 && !commonWords.includes(k),
+    );
+    
+    if (significantKeywords.length === 0) {
+      // If all keywords are common words, match any keyword
+      return keywords.some((keyword) => searchText.includes(keyword));
+    }
+    
+    return significantKeywords.some((keyword) => searchText.includes(keyword));
+  }
+
+  /**
    * Tool implementation: Search Stores
    * 
    * Searches for stores matching the query and returns store IDs.
    * Implements location-aware filtering when coordinates are provided:
    * - Uses storeService.findNearby() for efficient location-based queries
+   * - Explicitly filters for verified and active stores (onlyVerified: true, onlyActive: true)
    * - Filters stores within the specified radius
    * - Sorts results by distance (closest first)
-   * - Considers both keyword relevance and proximity
+   * - Uses flexible keyword matching (full phrase or significant keywords)
+   * - Falls back to all nearby stores if keyword matching fails
+   * - Falls back to all verified stores if no stores found in radius
+   * - Only returns verified and active stores
+   * 
+   * When location coordinates are not provided, searches all verified and active stores
+   * and filters by keyword matching.
    * 
    * @param params - Search parameters including query, maxResults, and optional location data
-   * @returns Tool call result with store IDs that match the search criteria
+   * @returns Tool call result with store IDs that match the search criteria (only verified stores)
    * @throws {ToolExecutionException} If coordinates are invalid or radius is invalid
    */
   private async searchStoresTool(params: SearchStoresParams): Promise<ToolCallResult> {
@@ -409,35 +905,73 @@ export class AiService implements OnModuleInit {
 
       // Apply location filtering if coordinates provided
       if (params.latitude !== undefined && params.longitude !== undefined) {
-        // Get nearby stores (already filtered by radius and sorted by distance)
+        // Get nearby stores (already filtered by radius, verified status, and sorted by distance)
+        // findNearby returns verified and active stores by default
         const nearbyStores = await this.storeService.findNearby(
           params.latitude,
           params.longitude,
           radiusKm,
+          { onlyVerified: true, onlyActive: true },
         ) as Store[];
 
-        // Filter by keyword matching
+        this.logger.debug(
+          `searchStoresTool: Found ${nearbyStores.length} nearby verified stores within ${radiusKm}km of (${params.latitude}, ${params.longitude})`,
+        );
+
+        // Filter by keyword matching using flexible matching helper
         matchingStores = nearbyStores
-          .filter((store) => {
-            const searchText = `${store.name} ${store.description}`.toLowerCase();
-            const keywords = query.split(/\s+/);
-            return keywords.some((keyword) => searchText.includes(keyword));
-          })
+          .filter((store) => this.matchesStoreQuery(store, query))
           .slice(0, maxResults);
+
+        // If no stores match keywords but we have nearby stores, return all nearby stores
+        // This provides a fallback when keyword matching is too strict
+        if (matchingStores.length === 0 && nearbyStores.length > 0) {
+          this.logger.debug(
+            `searchStoresTool: No stores matched keywords "${query}", returning all ${nearbyStores.length} nearby verified stores as fallback`,
+          );
+          matchingStores = nearbyStores.slice(0, maxResults);
+        }
+
+        // If no nearby stores found at all, fallback to searching all verified stores
+        // This handles cases where location might be invalid or no stores in radius
+        if (nearbyStores.length === 0) {
+          this.logger.debug(
+            `searchStoresTool: No stores found within ${radiusKm}km radius, falling back to all verified stores`,
+          );
+          const allStores = await this.storeService.stores({
+            where: { 
+              isActive: true,
+              verificationStatus: StoreVerificationStatus.VERIFIED,
+            },
+          });
+
+          // Filter by keyword matching using flexible matching helper
+          matchingStores = allStores
+            .filter((store) => this.matchesStoreQuery(store, query))
+            .slice(0, maxResults);
+        }
       } else {
-        // Get all stores and filter by keyword
+        // Get all stores and filter by keyword, only verified stores
         const allStores = await this.storeService.stores({
-          where: { isActive: true },
+          where: { 
+            isActive: true,
+            verificationStatus: StoreVerificationStatus.VERIFIED,
+          },
         });
 
+        this.logger.debug(
+          `searchStoresTool: Found ${allStores.length} total verified stores (no location filter)`,
+        );
+
+        // Filter by keyword matching using flexible matching helper
         matchingStores = allStores
-          .filter((store) => {
-            const searchText = `${store.name} ${store.description}`.toLowerCase();
-            const keywords = query.split(/\s+/);
-            return keywords.some((keyword) => searchText.includes(keyword));
-          })
+          .filter((store) => this.matchesStoreQuery(store, query))
           .slice(0, maxResults);
       }
+
+      this.logger.debug(
+        `searchStoresTool: Returning ${matchingStores.length} matching stores for query "${query}"`,
+      );
 
       const storeIds = matchingStores.map((s) => s.id);
 
@@ -492,35 +1026,43 @@ export class AiService implements OnModuleInit {
       const radiusKm = params.radius || 5; // Default radius for location filtering
 
       // Get all active promotions with product and store information
-      const activePromotions = await this.promotionService.findActive();
+      // Note: findActive() doesn't filter by verification, so we'll filter manually
+      const allActivePromotions = await this.promotionService.findActive();
       
       // Fetch product and store data for promotions that have productId
+      // Filter to only include promotions from verified stores
       const promotionsWithLocation = await Promise.all(
-        activePromotions.map(async (promo) => {
+        allActivePromotions.map(async (promo) => {
           if (!promo.productId) {
-            return { promo, product: null, store: null, distance: null };
+            return { promo, product: null, store: null, distance: null, isVerified: false };
           }
           
           const product = await this.productService.product({ id: promo.productId });
           if (!product || !product.storeId) {
-            return { promo, product, store: null, distance: null };
+            return { promo, product, store: null, distance: null, isVerified: false };
           }
           
           const store = await this.storeService.store({ where: { id: product.storeId } });
-          return { promo, product, store, distance: null };
+          const isVerified = store?.verificationStatus === StoreVerificationStatus.VERIFIED && store?.isActive === true;
+          return { promo, product, store, distance: null, isVerified };
         })
       );
 
-      // Simple keyword matching
+      // Simple keyword matching and filter by verified stores
       type PromotionWithLocation = {
         promo: Promotion;
         product: Product | null;
         store: Store | null;
         distance: number | null;
+        isVerified: boolean;
       };
 
       let matchingPromotions: PromotionWithLocation[] = promotionsWithLocation
         .filter((item) => {
+          // Only include promotions from verified stores
+          if (!item.isVerified) {
+            return false;
+          }
           const searchText = `${item.promo.title} ${item.promo.description} ${item.promo.type}`.toLowerCase();
           const keywords = query.split(/\s+/);
           return keywords.some((keyword) => searchText.includes(keyword));
@@ -563,6 +1105,82 @@ export class AiService implements OnModuleInit {
   }
 
   /**
+   * Tool implementation: Search Similar Products
+   * 
+   * Finds products similar to a given product based on features, price range, and characteristics.
+   * Only returns products from verified stores.
+   * 
+   * @param params - Search parameters including productId and maxResults
+   * @returns Tool call result with product IDs of similar products
+   * @throws {ToolExecutionException} If product not found or invalid productId
+   */
+  private async searchSimilarProductsTool(params: SearchSimilarProductsParams): Promise<ToolCallResult> {
+    try {
+      const maxResults = params.maxResults || 3;
+      
+      // Get the target product
+      const targetProduct = await this.productService.product({ id: params.productId });
+      if (!targetProduct) {
+        throw new ToolExecutionException('search_similar_products', 'Product not found');
+      }
+
+      // Verify the target product is from a verified store
+      const targetStore = await this.storeService.store({ where: { id: targetProduct.storeId } });
+      if (!targetStore || targetStore.verificationStatus !== StoreVerificationStatus.VERIFIED || !targetStore.isActive) {
+        throw new ToolExecutionException('search_similar_products', 'Target product must be from a verified store');
+      }
+
+      // Get all products from verified stores, excluding the target product
+      const allProducts = await this.productService.products({
+        where: {
+          id: { not: params.productId },
+          isActive: true,
+          store: {
+            verificationStatus: StoreVerificationStatus.VERIFIED,
+            isActive: true,
+          },
+        },
+      });
+
+      // Simple similarity matching based on name and description keywords
+      // In production, you might use more sophisticated similarity algorithms
+      const targetKeywords = `${targetProduct.name} ${targetProduct.description}`.toLowerCase().split(/\s+/);
+      const targetPrice = Number(targetProduct.price);
+      const priceRange = targetPrice * 0.5; // ±50% price range
+
+      const similarProducts = allProducts
+        .map((product) => {
+          const productKeywords = `${product.name} ${product.description}`.toLowerCase().split(/\s+/);
+          const productPrice = Number(product.price);
+          
+          // Calculate similarity score based on keyword overlap and price proximity
+          const keywordMatches = targetKeywords.filter((keyword) =>
+            productKeywords.some((pk) => pk.includes(keyword) || keyword.includes(pk))
+          ).length;
+          
+          const priceProximity = Math.abs(productPrice - targetPrice) <= priceRange ? 1 : 0;
+          const similarityScore = keywordMatches * 0.7 + priceProximity * 0.3;
+          
+          return { product, similarityScore };
+        })
+        .filter((item) => item.similarityScore > 0)
+        .sort((a, b) => b.similarityScore - a.similarityScore)
+        .slice(0, maxResults)
+        .map((item) => item.product);
+
+      const productIds = similarProducts.map((p: Product) => p.id);
+
+      return { productIds };
+    } catch (error) {
+      if (error instanceof ToolExecutionException) {
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new ToolExecutionException('search_similar_products', errorMessage);
+    }
+  }
+
+  /**
    * Executes a single tool call.
    * 
    * @param toolCall - The tool call from Groq API
@@ -585,7 +1203,7 @@ export class AiService implements OnModuleInit {
     }
 
     // Parse and validate arguments
-    let functionArgs: SearchProductsParams | SearchStoresParams | SearchPromotionsParams;
+    let functionArgs: SearchProductsParams | SearchStoresParams | SearchPromotionsParams | SearchSimilarProductsParams;
     try {
       functionArgs = JSON.parse(toolCall.function.arguments);
     } catch (error) {
@@ -593,23 +1211,27 @@ export class AiService implements OnModuleInit {
     }
 
     // Inject coordinates if available and not already provided by AI
-    if (latitude !== undefined && longitude !== undefined) {
-      if (functionArgs.latitude === undefined && functionArgs.longitude === undefined) {
-        functionArgs.latitude = latitude;
-        functionArgs.longitude = longitude;
+    // Only inject for tools that support location (not search_similar_products)
+    if (latitude !== undefined && longitude !== undefined && functionName !== 'search_similar_products') {
+      const locationArgs = functionArgs as SearchProductsParams | SearchStoresParams | SearchPromotionsParams;
+      if (locationArgs.latitude === undefined && locationArgs.longitude === undefined) {
+        locationArgs.latitude = latitude;
+        locationArgs.longitude = longitude;
       }
     }
 
     // Inject radius if available and not already provided by AI
-    if (radius !== undefined) {
-      if (functionArgs.radius === undefined) {
-        functionArgs.radius = radius;
+    // Only inject for tools that support location (not search_similar_products)
+    if (radius !== undefined && functionName !== 'search_similar_products') {
+      const locationArgs = functionArgs as SearchProductsParams | SearchStoresParams | SearchPromotionsParams;
+      if (locationArgs.radius === undefined) {
+        locationArgs.radius = radius;
       }
     }
 
     // Execute function
     const functionToCall = this.availableFunctions[functionName as keyof AvailableTools];
-    return await functionToCall(functionArgs);
+    return await functionToCall(functionArgs as any);
   }
 
   /**
@@ -848,11 +1470,17 @@ RESPONSE STYLE:
    * - Relevance score (70%): Based on keyword matching and semantic relevance
    * - Distance score (30%): Normalized distance (closer = higher score)
    * 
+   * **Store Recommendations**: 
+   * - Queries stores by collected store IDs
+   * - Re-applies verification and active filters to ensure data consistency
+   * - Only returns verified and active stores
+   * - Logs warnings if stores are not found despite having store IDs (for debugging)
+   * 
    * @param recommendationText - AI-generated recommendation text
    * @param intent - Detected intent (product, store, promotion, or chat)
-   * @param productIds - Collected product IDs (already filtered by relevance)
-   * @param storeIds - Collected store IDs (already filtered by relevance)
-   * @param promotionIds - Collected promotion IDs (already filtered by relevance)
+   * @param productIds - Collected product IDs (already filtered by relevance and verified stores)
+   * @param storeIds - Collected store IDs (already filtered by relevance and verified stores)
+   * @param promotionIds - Collected promotion IDs (already filtered by relevance and verified stores)
    * @param maxResults - Maximum number of results
    * @param latitude - Optional user latitude for distance calculation
    * @param longitude - Optional user longitude for distance calculation
@@ -876,7 +1504,14 @@ RESPONSE STYLE:
     // Build product recommendations with relevance + distance scoring
     if (productIds.length > 0 && intent === RecommendationType.PRODUCT) {
       const products = await this.productService.products({
-        where: { id: { in: productIds } },
+        where: { 
+          id: { in: productIds },
+          isActive: true,
+          store: {
+            verificationStatus: StoreVerificationStatus.VERIFIED,
+            isActive: true,
+          },
+        },
         include: { store: true },
       });
 
@@ -931,9 +1566,22 @@ RESPONSE STYLE:
 
     // Build store recommendations with relevance + distance scoring
     if (storeIds.length > 0 && intent === RecommendationType.STORE) {
+      // Query stores by IDs - stores are already verified from searchStoresTool,
+      // but we re-apply filters to ensure data consistency and handle potential race conditions
       const stores = await this.storeService.stores({
-        where: { id: { in: storeIds } },
+        where: { 
+          id: { in: storeIds },
+          verificationStatus: StoreVerificationStatus.VERIFIED,
+          isActive: true,
+        },
       });
+
+      // Log if stores are not found despite having storeIds (for debugging)
+      if (stores.length === 0 && storeIds.length > 0) {
+        this.logger.warn(
+          `No verified stores found for storeIds: [${storeIds.join(', ')}]. This may indicate stores were unverified or deactivated.`,
+        );
+      }
 
       // Calculate combined scores and sort
       const storesWithScores = await Promise.all(
@@ -984,11 +1632,31 @@ RESPONSE STYLE:
 
     // Build promotion recommendations
     if (promotionIds.length > 0 && intent === RecommendationType.PROMOTION) {
-      const promotions = await Promise.all(
+      const allPromotions = await Promise.all(
         promotionIds.slice(0, maxResults).map((id) => this.promotionService.findOne(id)),
       );
 
-      response.promotions = promotions
+      // Filter promotions to only include those from verified stores
+      const verifiedPromotions = await Promise.all(
+        allPromotions
+          .filter((p): p is Promotion => p !== null)
+          .map(async (promo) => {
+            if (!promo.productId) {
+              return null;
+            }
+            const product = await this.productService.product({ id: promo.productId });
+            if (!product || !product.storeId) {
+              return null;
+            }
+            const store = await this.storeService.store({ where: { id: product.storeId } });
+            if (!store || store.verificationStatus !== StoreVerificationStatus.VERIFIED || !store.isActive) {
+              return null;
+            }
+            return promo;
+          })
+      );
+
+      response.promotions = verifiedPromotions
         .filter((p): p is Promotion => p !== null)
         .map((promo) => ({
           id: promo.id,
@@ -1069,6 +1737,11 @@ RESPONSE STYLE:
         id: {
           not: productId,
         },
+        isActive: true,
+        store: {
+          verificationStatus: StoreVerificationStatus.VERIFIED,
+          isActive: true,
+        },
       },
     });
 
@@ -1089,17 +1762,12 @@ Format: Numbered list. For each item include exactly 3 short bullets:
 - diff: one notable difference
 - why: ≤10 words on user value`;
 
-    const response = await this.chat([
-      {
-        role: 'system',
-        content:
-          'You are a knowledgeable shopping assistant who provides thoughtful product recommendations based on similarities and complementary features.',
-      },
-      { role: 'user', content: prompt },
-    ]);
+    // Use the unified chat endpoint with a system message prepended to the content
+    const fullPrompt = `You are a knowledgeable shopping assistant who provides thoughtful product recommendations based on similarities and complementary features.\n\n${prompt}`;
+    
+    const response = await this.chat(fullPrompt, undefined, undefined, undefined, count);
 
     return {
-      role: response.role,
       content: response.content,
     };
   }
