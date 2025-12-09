@@ -9,18 +9,18 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  createdAt DateTime @default(now())
-  role      UserRole @default(CONSUMER)
-  imageUrl  String?
+  id               Int              @id @default(autoincrement())
+  email            String           @unique
+  password         String
+  name             String
+  createdAt        DateTime         @default(now())
+  role             UserRole         @default(CONSUMER)
+  imageUrl         String?
+  subscriptionTier SubscriptionTier @default(BASIC)
 
   Store           Store[]
   StoreBookmark   StoreBookmark[]
   ProductBookmark ProductBookmark[]
-  subscriptions   UserSubscription[]
   notifications   Notification[]
 }
 
@@ -28,6 +28,11 @@ enum UserRole {
   CONSUMER
   RETAILER
   ADMIN
+}
+
+enum SubscriptionTier {
+  BASIC
+  PRO
 }
 
 model Store {
@@ -74,10 +79,10 @@ model Product {
   categoryId  Int?
   imageUrl    String?
 
-  store      Store             @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  category   Category?         @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  bookmarks  ProductBookmark[]
-  promotions Promotion[]
+  store             Store              @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  category          Category?          @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  bookmarks         ProductBookmark[]
+  promotionProducts PromotionProduct[]
 }
 
 model Promotion {
@@ -89,9 +94,22 @@ model Promotion {
   endsAt      DateTime?
   active      Boolean   @default(true)
   discount    Float     @default(0)
-  productId   Int?
 
-  product Product? @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  promotionProducts PromotionProduct[]
+}
+
+model PromotionProduct {
+  id          Int      @id @default(autoincrement())
+  promotionId Int
+  productId   Int
+  createdAt   DateTime @default(now())
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([promotionId, productId])
+  @@index([promotionId])
+  @@index([productId])
 }
 
 model Category {
@@ -125,62 +143,6 @@ model ProductBookmark {
   product Product @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([userId, productId])
-}
-
-model Subscription {
-  id           Int              @id @default(autoincrement())
-  name         String
-  description  String?
-  plan         SubscriptionPlan @default(FREE)
-  billingCycle BillingCycle     @default(MONTHLY)
-  price        Decimal          @default(0)
-  benefits     String?
-  isActive     Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  startsAt     DateTime         @default(now())
-  endsAt       DateTime?
-
-  userSubscriptions UserSubscription[]
-}
-
-model UserSubscription {
-  id             Int                @id @default(autoincrement())
-  userId         Int
-  subscriptionId Int
-  status         SubscriptionStatus @default(ACTIVE)
-  price          Decimal            @default(0)
-  billingCycle   BillingCycle       @default(MONTHLY)
-  startsAt       DateTime           @default(now())
-  endsAt         DateTime?
-  cancelledAt    DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-
-  user         User         @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-
-  @@index([userId])
-  @@index([subscriptionId])
-  @@index([userId, status])
-}
-
-enum SubscriptionPlan {
-  FREE
-  BASIC
-  PREMIUM
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  CANCELLED
-  EXPIRED
-  PENDING
-}
-
-enum BillingCycle {
-  MONTHLY
-  YEARLY
 }
 
 model Notification {

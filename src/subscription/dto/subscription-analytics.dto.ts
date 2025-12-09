@@ -1,109 +1,116 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { SubscriptionPlan, SubscriptionStatus, BillingCycle } from 'generated/prisma';
 
 /**
- * Subscription Count by Plan
+ * Role-Tier Count DTO
  * 
- * Represents the count of subscriptions grouped by plan type.
+ * Represents the count of users with BASIC and PRO tiers for a specific role.
  */
-export class SubscriptionCountByPlan {
-  @ApiProperty({ enum: SubscriptionPlan })
-  plan: SubscriptionPlan;
+class RoleTierCountDto {
+  @ApiProperty({
+    description: 'Number of users with BASIC tier',
+    example: 50,
+  })
+  basic: number;
 
-  @ApiProperty({ description: 'Number of subscriptions with this plan', example: 10 })
-  count: number;
-}
+  @ApiProperty({
+    description: 'Number of users with PRO tier',
+    example: 25,
+  })
+  pro: number;
 
-/**
- * Subscription Count by Status
- * 
- * Represents the count of subscriptions grouped by status.
- */
-export class SubscriptionCountByStatus {
-  @ApiProperty({ enum: SubscriptionStatus })
-  status: SubscriptionStatus;
-
-  @ApiProperty({ description: 'Number of subscriptions with this status', example: 25 })
-  count: number;
-}
-
-/**
- * Subscription Count by Billing Cycle
- * 
- * Represents the count of subscriptions grouped by billing cycle.
- */
-export class SubscriptionCountByBillingCycle {
-  @ApiProperty({ enum: BillingCycle })
-  billingCycle: BillingCycle;
-
-  @ApiProperty({ description: 'Number of subscriptions with this billing cycle', example: 15 })
-  count: number;
-}
-
-/**
- * Subscription Analytics Data Transfer Object
- * 
- * Comprehensive analytics data for subscription management dashboard.
- * Includes counts, revenue metrics, and trend information.
- */
-export class SubscriptionAnalyticsDTO {
-  @ApiProperty({ description: 'Total number of subscriptions', example: 100 })
+  @ApiProperty({
+    description: 'Total users in this role',
+    example: 75,
+  })
   total: number;
-
-  @ApiProperty({ description: 'Number of active subscriptions', example: 45 })
-  active: number;
-
-  @ApiProperty({ description: 'Number of cancelled subscriptions', example: 30 })
-  cancelled: number;
-
-  @ApiProperty({ description: 'Number of expired subscriptions', example: 20 })
-  expired: number;
-
-  @ApiProperty({ description: 'Number of pending subscriptions', example: 5 })
-  pending: number;
-
-  @ApiProperty({
-    description: 'Subscriptions grouped by plan',
-    type: [SubscriptionCountByPlan],
-  })
-  byPlan: SubscriptionCountByPlan[];
-
-  @ApiProperty({
-    description: 'Subscriptions grouped by status',
-    type: [SubscriptionCountByStatus],
-  })
-  byStatus: SubscriptionCountByStatus[];
-
-  @ApiProperty({
-    description: 'Subscriptions grouped by billing cycle',
-    type: [SubscriptionCountByBillingCycle],
-  })
-  byBillingCycle: SubscriptionCountByBillingCycle[];
-
-  @ApiProperty({
-    description: 'Total revenue from active subscriptions',
-    example: '1250.50',
-    type: String,
-  })
-  totalRevenue: string;
-
-  @ApiProperty({
-    description: 'Average subscription price',
-    example: '25.50',
-    type: String,
-  })
-  averagePrice: string;
-
-  @ApiProperty({
-    description: 'Number of subscriptions created in the last 30 days',
-    example: 12,
-  })
-  recentSubscriptions: number;
-
-  @ApiProperty({
-    description: 'Number of subscriptions created this month',
-    example: 8,
-  })
-  subscriptionsThisMonth: number;
 }
 
+/**
+ * By Role and Tier DTO
+ * 
+ * Represents the distribution of subscription tiers across different user roles.
+ */
+class ByRoleAndTierDto {
+  @ApiProperty({
+    description: 'Consumer tier distribution',
+    type: RoleTierCountDto,
+  })
+  consumer: RoleTierCountDto;
+
+  @ApiProperty({
+    description: 'Retailer tier distribution',
+    type: RoleTierCountDto,
+  })
+  retailer: RoleTierCountDto;
+
+  @ApiProperty({
+    description: 'Admin tier distribution',
+    type: RoleTierCountDto,
+  })
+  admin: RoleTierCountDto;
+}
+
+/**
+ * Revenue DTO
+ * 
+ * Represents the revenue generated from PRO subscriptions.
+ */
+class RevenueDto {
+  @ApiProperty({
+    description: 'Monthly revenue from PRO subscriptions',
+    example: 2500,
+  })
+  monthly: number;
+
+  @ApiProperty({
+    description: 'Yearly revenue from PRO subscriptions',
+    example: 30000,
+  })
+  yearly: number;
+
+  @ApiProperty({
+    description: 'Currency code',
+    example: 'PHP',
+  })
+  currency: string;
+}
+
+/**
+ * Subscription Analytics DTO
+ * 
+ * Comprehensive analytics for subscription tiers.
+ * Provides counts by tier, role-tier distribution, and revenue metrics.
+ * 
+ * Used by admin dashboard to view subscription statistics.
+ */
+export class SubscriptionAnalyticsDto {
+  @ApiProperty({
+    description: 'Total number of users',
+    example: 150,
+  })
+  totalUsers: number;
+
+  @ApiProperty({
+    description: 'Number of users with BASIC tier',
+    example: 100,
+  })
+  basicUsers: number;
+
+  @ApiProperty({
+    description: 'Number of users with PRO tier',
+    example: 50,
+  })
+  proUsers: number;
+
+  @ApiProperty({
+    description: 'Distribution of tiers by role',
+    type: ByRoleAndTierDto,
+  })
+  byRoleAndTier: ByRoleAndTierDto;
+
+  @ApiProperty({
+    description: 'Revenue metrics from PRO subscriptions',
+    type: RevenueDto,
+  })
+  revenue: RevenueDto;
+}

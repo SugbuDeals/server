@@ -142,12 +142,11 @@ export class PromotionRecommendationItemDto {
   @ApiProperty({ example: 20.0, description: 'Discount amount', type: Number })
   discount: number;
 
-  @ApiPropertyOptional({ 
-    example: 1, 
-    description: 'Product ID (nullable)',
-    nullable: true
+  @ApiProperty({ 
+    example: 3, 
+    description: 'Number of products in this promotion',
   })
-  productId: number | null;
+  productCount: number;
 }
 
 /**

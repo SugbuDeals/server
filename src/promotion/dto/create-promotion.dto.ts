@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsBoolean, IsArray, ArrayMinSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -91,13 +91,21 @@ export class CreatePromotionDto {
   discount: number;
 
   /**
-   * Product ID
-   * The product this promotion applies to
+   * Product IDs
+   * Array of product IDs this promotion applies to
+   * 
+   * Subscription Tier Limits (Retailers only):
+   * - BASIC: Maximum 10 products per promotion
+   * - PRO: Unlimited products
    */
   @ApiProperty({ 
-    example: 1,
-    description: 'ID of the product this promotion applies to'
+    example: [1, 2, 3],
+    description: 'Array of product IDs this promotion applies to. BASIC tier allows max 10 products, PRO tier allows unlimited.',
+    type: [Number],
+    isArray: true,
   })
-  @IsNumber()
-  productId: number;
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one product is required' })
+  @IsNumber({}, { each: true })
+  productIds: number[];
 }

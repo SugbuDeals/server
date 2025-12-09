@@ -36,6 +36,8 @@ import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
+import { SubscriptionTierGuard } from 'src/subscription/guards/subscription-tier.guard';
+import { TierLimit, TierLimitType } from 'src/subscription/decorators/tier-limit.decorator';
 
 /**
  * Product Controller
@@ -140,16 +142,21 @@ export class ProductController {
    * - Checks for questionable pricing and notifies admins if detected
    * - Notifies users who bookmarked the store about the new product
    * 
+   * Subscription Tier Limits (Retailers only):
+   * - BASIC: Maximum 10 products per store
+   * - PRO: Unlimited products
+   * 
    * @param req - Request object containing authenticated user information
    * @param createProductDto - Product creation data
    * @returns Created product object
    */
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, SubscriptionTierGuard)
+  @TierLimit(TierLimitType.RETAILER_PRODUCT_COUNT)
   @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Create a product',
-    description: 'Creates a new product. Restricted to retailers and admins. Automatically notifies store bookmarks and checks for questionable pricing.'
+    description: 'Creates a new product. Restricted to retailers and admins. Automatically notifies store bookmarks and checks for questionable pricing. TIER LIMITS (Retailers only): BASIC tier allows max 10 products per store, PRO tier allows unlimited products.',
   })
   @ApiBody({ type: CreateProductDTO })
   @ApiCreatedResponse({ 
@@ -158,12 +165,18 @@ export class ProductController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
-    description: 'Forbidden - Only retailers and admins can create products',
+    description: 'Forbidden - Only retailers and admins can create products, or product limit exceeded',
     schema: {
       type: 'object',
       properties: {
         statusCode: { type: 'number', example: 403 },
-        message: { type: 'string' }
+        message: {
+          type: 'string',
+          examples: [
+            'Only retailers and admins can create products',
+            'BASIC tier allows a maximum of 10 products. Upgrade to PRO for unlimited products.',
+          ],
+        },
       }
     }
   })
