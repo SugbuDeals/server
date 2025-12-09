@@ -8,6 +8,7 @@ import {
   Delete,
   ParseIntPipe,
   UseGuards,
+  Request as RequestDecorator,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -29,6 +30,11 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { UserRole } from 'generated/prisma';
+import { SubscriptionTierGuard } from 'src/subscription/guards/subscription-tier.guard';
+import { TierLimit, TierLimitType } from 'src/subscription/decorators/tier-limit.decorator';
+import { AddProductsToPromotionDto } from './dto/add-products-to-promotion.dto';
+import type { Request as ExpressRequest } from 'express';
+import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 /**
  * Promotion Controller
@@ -46,20 +52,26 @@ export class PromotionController {
   constructor(private readonly promotionService: PromotionService) {}
 
   /**
-   * Creates a new promotion.
+   * Creates a new promotion with multiple products.
    * 
-   * After creation, automatically notifies users who bookmarked the product/store
+   * After creation, automatically notifies users who bookmarked the products/stores
    * and checks for questionable discount pricing.
    * 
-   * @param createPromotionDto - Promotion creation data
+   * Subscription Tier Limits (Retailers only):
+   * - BASIC: Maximum 5 promotions, max 10 products per promotion
+   * - PRO: Unlimited promotions and products per promotion
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param createPromotionDto - Promotion creation data with product IDs
    * @returns Created promotion object
    */
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, SubscriptionTierGuard)
+  @TierLimit(TierLimitType.RETAILER_PROMOTION_COUNT)
   @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Create a promotion',
-    description: 'Creates a new promotion for a product. Restricted to retailers and admins. Automatically notifies bookmarks and checks for questionable pricing.'
+    description: 'Creates a new promotion for multiple products. Restricted to retailers and admins. Automatically notifies bookmarks and checks for questionable pricing. TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 products per promotion, PRO tier allows unlimited.',
   })
   @ApiBody({ type: CreatePromotionDto })
   @ApiCreatedResponse({ 
@@ -68,11 +80,19 @@ export class PromotionController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ 
-    description: 'Forbidden - Only retailers and admins can create promotions',
+    description: 'Forbidden - Only retailers and admins can create promotions, or tier limit exceeded',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number', example: 403 }
+        statusCode: { type: 'number', example: 403 },
+        message: {
+          type: 'string',
+          examples: [
+            'Only retailers and admins can create promotions',
+            'BASIC tier allows a maximum of 5 promotions. Upgrade to PRO for unlimited promotions.',
+            'BASIC tier allows a maximum of 10 products per promotion. Upgrade to PRO for unlimited products per promotion.',
+          ],
+        },
       }
     }
   })
@@ -89,6 +109,72 @@ export class PromotionController {
   @Roles(UserRole.ADMIN, UserRole.RETAILER)
   create(@Body() createPromotionDto: CreatePromotionDto) {
     return this.promotionService.create(createPromotionDto);
+  }
+
+  /**
+   * Adds products to an existing promotion.
+   * 
+   * Checks subscription tier limits before adding products.
+   * 
+   * Subscription Tier Limits (Retailers only):
+   * - BASIC: Maximum 10 products per promotion (total)
+   * - PRO: Unlimited products per promotion
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param id - Promotion ID
+   * @param addProductsDto - DTO containing product IDs to add
+   * @returns Updated promotion object
+   */
+  @Post(':id/products')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Add products to a promotion',
+    description: 'Adds additional products to an existing promotion. Restricted to retailers and admins. TIER LIMITS (Retailers only): BASIC tier allows max 10 products total per promotion, PRO tier allows unlimited.',
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Promotion ID',
+    example: 1,
+  })
+  @ApiBody({ type: AddProductsToPromotionDto })
+  @ApiCreatedResponse({
+    description: 'Products added successfully',
+    type: PromotionResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({
+    description: 'Forbidden - Only retailers and admins can add products, or tier limit exceeded',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: {
+          type: 'string',
+          example: 'BASIC tier allows a maximum of 10 products per promotion. Upgrade to PRO for unlimited products per promotion.',
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid promotion ID or product IDs',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Promotion not found' },
+      },
+    },
+  })
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
+  addProducts(
+    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() addProductsDto: AddProductsToPromotionDto,
+  ) {
+    const requestingUser = req.user;
+    return this.promotionService.addProductsToPromotion(id, requestingUser.sub, addProductsDto);
   }
 
   /**

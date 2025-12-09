@@ -5,7 +5,6 @@ import {
   NotificationType,
   Prisma,
   UserRole,
-  SubscriptionStatus,
 } from 'generated/prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
@@ -314,6 +313,9 @@ export class NotificationService {
 
   /**
    * Notifies users who bookmarked a product when promotion is created
+   * 
+   * @param promotionId - The promotion ID
+   * @param productId - The product ID that triggered the notification
    */
   async notifyPromotionCreated(
     promotionId: number,
@@ -321,14 +323,22 @@ export class NotificationService {
   ): Promise<void> {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id: promotionId },
-      include: { product: { include: { store: true } } },
+      include: {
+        promotionProducts: {
+          include: {
+            product: {
+              include: { store: true },
+            },
+          },
+        },
+      },
     });
 
     if (!promotion) return;
 
     let userIds: number[] = [];
 
-    if (productId && promotion.product) {
+    if (productId) {
       // Notify users who bookmarked the product
       const productBookmarks = await this.prisma.productBookmark.findMany({
         where: { productId },
@@ -337,12 +347,17 @@ export class NotificationService {
       userIds = productBookmarks.map((b) => b.userId);
 
       // Also notify users who bookmarked the store
-      const storeBookmarks = await this.prisma.storeBookmark.findMany({
-        where: { storeId: promotion.product.storeId },
-        select: { userId: true },
-      });
-      const storeUserIds = storeBookmarks.map((b) => b.userId);
-      userIds = [...new Set([...userIds, ...storeUserIds])];
+      const promotionProduct = promotion.promotionProducts.find(
+        (pp) => pp.productId === productId,
+      );
+      if (promotionProduct) {
+        const storeBookmarks = await this.prisma.storeBookmark.findMany({
+          where: { storeId: promotionProduct.product.storeId },
+          select: { userId: true },
+        });
+        const storeUserIds = storeBookmarks.map((b) => b.userId);
+        userIds = [...new Set([...userIds, ...storeUserIds])];
+      }
     }
 
     if (userIds.length > 0) {
@@ -353,8 +368,7 @@ export class NotificationService {
         `${promotion.description} - ${promotion.discount}% off!`,
         {
           promotionId,
-          productId: promotion.productId || undefined,
-          storeId: promotion.product?.storeId,
+          productId: productId || undefined,
         },
       );
     }
@@ -408,18 +422,18 @@ export class NotificationService {
   }
 
   /**
-   * Notifies retailers about new subscription plans available
+   * Notifies retailers about PRO subscription tier availability
+   * 
+   * Note: With fixed tiers (BASIC/PRO), this is primarily used for
+   * promotional purposes to remind retailers about upgrading.
    */
-  async notifyNewSubscriptionAvailable(subscriptionId: number): Promise<void> {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { id: subscriptionId },
-    });
-
-    if (!subscription || !subscription.isActive) return;
-
-    // Get all retailers
+  async notifyNewSubscriptionAvailable(): Promise<void> {
+    // Get all retailers on BASIC tier
     const retailers = await this.prisma.user.findMany({
-      where: { role: UserRole.RETAILER },
+      where: {
+        role: UserRole.RETAILER,
+        subscriptionTier: 'BASIC',
+      },
       select: { id: true },
     });
 
@@ -429,8 +443,8 @@ export class NotificationService {
       await this.createNotificationsForUsers(
         retailerIds,
         NotificationType.SUBSCRIPTION_AVAILABLE,
-        'New Subscription Available!',
-        "There's new subscription, you might be interested in!",
+        'Upgrade to PRO!',
+        'Unlock unlimited products and promotions with PRO tier for only 100 PHP/month!',
       );
     }
   }
@@ -441,23 +455,27 @@ export class NotificationService {
   async notifyPromotionEndingSoon(promotionId: number): Promise<void> {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id: promotionId },
-      include: { product: { include: { store: true } } },
+      include: {
+        promotionProducts: {
+          include: {
+            product: {
+              include: { store: true },
+            },
+          },
+          take: 1, // Just need one to get store info
+        },
+      },
     });
 
-    if (!promotion || !promotion.endsAt) return;
+    if (!promotion || !promotion.endsAt || promotion.promotionProducts.length === 0) return;
 
-    const store = await this.prisma.store.findUnique({
-      where: { id: promotion.product?.storeId || 0 },
-      include: { owner: true },
-    });
-
-    if (!store) return;
+    const store = promotion.promotionProducts[0].product.store;
 
     await this.createNotification({
       userId: store.ownerId,
       type: NotificationType.PROMOTION_ENDING_SOON,
       title: 'Promotion Ending Soon',
-      message: 'Your promotion is about to end, please check it out',
+      message: `Your promotion "${promotion.title}" is about to end, please check it out`,
       promotionId,
       storeId: store.id,
     });
@@ -469,17 +487,21 @@ export class NotificationService {
   async notifyPromotionEnded(promotionId: number): Promise<void> {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id: promotionId },
-      include: { product: { include: { store: true } } },
+      include: {
+        promotionProducts: {
+          include: {
+            product: {
+              include: { store: true },
+            },
+          },
+          take: 1, // Just need one to get store info
+        },
+      },
     });
 
-    if (!promotion) return;
+    if (!promotion || promotion.promotionProducts.length === 0) return;
 
-    const store = await this.prisma.store.findUnique({
-      where: { id: promotion.product?.storeId || 0 },
-      include: { owner: true },
-    });
-
-    if (!store) return;
+    const store = promotion.promotionProducts[0].product.store;
 
     await this.createNotification({
       userId: store.ownerId,
@@ -492,27 +514,24 @@ export class NotificationService {
   }
 
   /**
-   * Notifies retailer that their subscription is about to end
+   * Notifies retailer about PRO tier renewal
+   * 
+   * Note: With fixed tiers, this is used for billing reminders.
+   * In a full implementation, this would be triggered by payment processor.
    */
   async notifySubscriptionEndingSoon(userId: number): Promise<void> {
-    const userSubscription = await this.prisma.userSubscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-      },
-      include: {
-        subscription: true,
-      },
-      orderBy: { createdAt: 'desc' },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscriptionTier: true, role: true },
     });
 
-    if (!userSubscription || !userSubscription.endsAt) return;
+    if (!user || user.subscriptionTier !== 'PRO') return;
 
     await this.createNotification({
       userId,
       type: NotificationType.SUBSCRIPTION_ENDING_SOON,
-      title: 'Subscription Ending Soon',
-      message: 'Your subscription is about to end, please check it out',
+      title: 'PRO Subscription Renewal Due',
+      message: 'Your PRO subscription payment is due soon. Please ensure payment to maintain PRO benefits.',
     });
   }
 
@@ -540,7 +559,6 @@ export class NotificationService {
   ): Promise<void> {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id: promotionId },
-      include: { product: { include: { store: true } } },
     });
 
     if (!promotion) return;
@@ -549,7 +567,7 @@ export class NotificationService {
       userId,
       type: NotificationType.PROMOTION_NEARBY,
       title: 'Promotion Nearby!',
-      message: "There's a Promotion Nearby Check it out!",
+      message: `${promotion.title} - ${promotion.discount}% off! Check it out!`,
       promotionId,
       storeId,
     });

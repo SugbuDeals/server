@@ -4,7 +4,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { NotificationService } from './notification.service';
 import {
   NotificationType,
-  SubscriptionStatus,
   Prisma,
 } from 'generated/prisma';
 
@@ -49,8 +48,6 @@ export class NotificationSchedulerService {
       await Promise.allSettled([
         this.checkPromotionsEndingSoon(),
         this.checkPromotionsEnded(),
-        this.checkSubscriptionsEndingSoon(),
-        this.checkSubscriptionsExpired(),
       ]);
 
       const duration = Date.now() - startTime;
@@ -90,14 +87,15 @@ export class NotificationSchedulerService {
         // Only select minimal fields needed
         const promotions: Array<{
           id: number;
-          productId: number | null;
-          product: {
-            storeId: number;
-            store: {
-              id: number;
-              ownerId: number;
-            } | null;
-          } | null;
+          promotionProducts: Array<{
+            product: {
+              storeId: number;
+              store: {
+                id: number;
+                ownerId: number;
+              } | null;
+            };
+          }>;
         }> = await this.prisma.promotion.findMany({
           where: {
             active: true,
@@ -105,22 +103,24 @@ export class NotificationSchedulerService {
               gte: now,
               lte: endingSoonThreshold,
             },
-            // Exclude promotions that already have ending soon notifications
-            // by checking if notification exists (we'll track this in memory)
           },
           select: {
             id: true,
-            productId: true,
-            product: {
+            promotionProducts: {
               select: {
-                storeId: true,
-                store: {
+                product: {
                   select: {
-                    id: true,
-                    ownerId: true,
+                    storeId: true,
+                    store: {
+                      select: {
+                        id: true,
+                        ownerId: true,
+                      },
+                    },
                   },
                 },
               },
+              take: 1, // Just need one to get store owner
             },
           },
           take: this.BATCH_SIZE,
@@ -145,11 +145,14 @@ export class NotificationSchedulerService {
               select: { id: true },
             });
 
-            if (!existingNotification && promotion.product?.store?.ownerId) {
-              await this.notificationService.notifyPromotionEndingSoon(
-                promotion.id,
-              );
-              notificationCount++;
+            if (!existingNotification && promotion.promotionProducts.length > 0) {
+              const store = promotion.promotionProducts[0].product.store;
+              if (store?.ownerId) {
+                await this.notificationService.notifyPromotionEndingSoon(
+                  promotion.id,
+                );
+                notificationCount++;
+              }
             }
           } catch (error) {
             this.logger.error(
@@ -199,14 +202,15 @@ export class NotificationSchedulerService {
         // Fetch batch of ended promotions
         const promotions: Array<{
           id: number;
-          productId: number | null;
-          product: {
-            storeId: number;
-            store: {
-              id: number;
-              ownerId: number;
-            } | null;
-          } | null;
+          promotionProducts: Array<{
+            product: {
+              storeId: number;
+              store: {
+                id: number;
+                ownerId: number;
+              } | null;
+            };
+          }>;
         }> = await this.prisma.promotion.findMany({
           where: {
             active: true,
@@ -217,17 +221,21 @@ export class NotificationSchedulerService {
           },
           select: {
             id: true,
-            productId: true,
-            product: {
+            promotionProducts: {
               select: {
-                storeId: true,
-                store: {
+                product: {
                   select: {
-                    id: true,
-                    ownerId: true,
+                    storeId: true,
+                    store: {
+                      select: {
+                        id: true,
+                        ownerId: true,
+                      },
+                    },
                   },
                 },
               },
+              take: 1, // Just need one to get store owner
             },
           },
           take: this.BATCH_SIZE,
@@ -252,15 +260,18 @@ export class NotificationSchedulerService {
               select: { id: true },
             });
 
-            if (!existingNotification && promotion.product?.store?.ownerId) {
-              await this.notificationService.notifyPromotionEnded(promotion.id);
-              notificationCount++;
+            if (!existingNotification && promotion.promotionProducts.length > 0) {
+              const store = promotion.promotionProducts[0].product.store;
+              if (store?.ownerId) {
+                await this.notificationService.notifyPromotionEnded(promotion.id);
+                notificationCount++;
 
-              // Mark promotion as inactive
-              await this.prisma.promotion.update({
-                where: { id: promotion.id },
-                data: { active: false },
-              });
+                // Mark promotion as inactive
+                await this.prisma.promotion.update({
+                  where: { id: promotion.id },
+                  data: { active: false },
+                });
+              }
             }
           } catch (error) {
             this.logger.error(
@@ -290,241 +301,24 @@ export class NotificationSchedulerService {
 
   /**
    * Check for subscriptions ending soon
-   * Uses efficient batch processing with minimal memory footprint
+   * 
+   * Note: With fixed tiers (BASIC/PRO), this method is no longer needed
+   * as subscriptions don't have expiration dates. Kept for future payment integration.
    */
   private async checkSubscriptionsEndingSoon(): Promise<void> {
-    this.logger.log('Checking subscriptions ending soon...');
-
-    const now = new Date();
-    const endingSoonThreshold = new Date(
-      now.getTime() + this.SUBSCRIPTION_ENDING_SOON_HOURS * 60 * 60 * 1000,
-    );
-
-    let cursor: number | undefined = undefined;
-    let processedCount = 0;
-    let notificationCount = 0;
-
-    try {
-      while (true) {
-        // Fetch batch of subscriptions ending soon
-        // Only select fields we need
-        const subscriptions: Array<{
-          id: number;
-          userId: number;
-          endsAt: Date | null;
-        }> = await this.prisma.userSubscription.findMany({
-          where: {
-            status: SubscriptionStatus.ACTIVE,
-            endsAt: {
-              gte: now,
-              lte: endingSoonThreshold,
-            },
-          },
-          select: {
-            id: true,
-            userId: true,
-            endsAt: true,
-          },
-          take: this.BATCH_SIZE,
-          ...(cursor && { skip: 1, cursor: { id: cursor } }),
-          orderBy: { id: 'asc' },
-        });
-
-        if (subscriptions.length === 0) break;
-
-        // Process subscriptions in smaller batches for notifications
-        for (let i = 0; i < subscriptions.length; i += this.NOTIFICATION_BATCH_SIZE) {
-          const batch = subscriptions.slice(i, i + this.NOTIFICATION_BATCH_SIZE);
-          
-          // Check which ones don't have notifications yet
-          const userIdsToNotify: number[] = [];
-          
-          for (const subscription of batch) {
-            try {
-              const existingNotification = await this.prisma.notification.findFirst({
-                where: {
-                  userId: subscription.userId,
-                  type: NotificationType.SUBSCRIPTION_ENDING_SOON,
-                  createdAt: {
-                    gte: new Date(now.getTime() - 48 * 60 * 60 * 1000), // Last 48 hours
-                  },
-                },
-                select: { id: true },
-              });
-
-              if (!existingNotification) {
-                userIdsToNotify.push(subscription.userId);
-              }
-            } catch (error) {
-              this.logger.error(
-                `Error checking subscription ${subscription.id}`,
-                error,
-              );
-            }
-          }
-
-          // Create notifications in bulk
-          if (userIdsToNotify.length > 0) {
-            const notifications = userIdsToNotify.map((userId) => ({
-              userId,
-              type: NotificationType.SUBSCRIPTION_ENDING_SOON,
-              title: 'Subscription Ending Soon',
-              message: 'Your subscription is about to end, please check it out',
-            }));
-
-            try {
-              await this.prisma.notification.createMany({
-                data: notifications,
-                skipDuplicates: true,
-              });
-              notificationCount += userIdsToNotify.length;
-            } catch (error) {
-              this.logger.error('Error creating bulk notifications', error);
-            }
-          }
-        }
-
-        const batchLength = subscriptions.length;
-        processedCount += batchLength;
-        cursor = subscriptions[batchLength - 1]?.id;
-
-        // Memory cleanup
-        subscriptions.length = 0;
-
-        if (batchLength < this.BATCH_SIZE) break;
-      }
-
-      this.logger.log(
-        `Processed ${processedCount} subscriptions, created ${notificationCount} notifications`,
-      );
-    } catch (error) {
-      this.logger.error('Error checking subscriptions ending soon', error);
-    }
+    // No-op: Fixed tiers don't expire
+    this.logger.log('Skipping subscription ending soon check (fixed tiers)');
   }
 
   /**
    * Check for expired subscriptions and mark them as expired
-   * Uses batch processing for memory efficiency
+   * 
+   * Note: With fixed tiers (BASIC/PRO), this method is no longer needed
+   * as subscriptions don't have expiration dates. Kept for future payment integration.
    */
   private async checkSubscriptionsExpired(): Promise<void> {
-    this.logger.log('Checking expired subscriptions...');
-
-    const now = new Date();
-    // Check subscriptions that expired in the last hour
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-
-    let cursor: number | undefined = undefined;
-    let processedCount = 0;
-    let notificationCount = 0;
-    let expiredCount = 0;
-
-    try {
-      while (true) {
-        // Fetch batch of expired subscriptions
-        const subscriptions: Array<{
-          id: number;
-          userId: number;
-        }> = await this.prisma.userSubscription.findMany({
-          where: {
-            status: SubscriptionStatus.ACTIVE,
-            endsAt: {
-              gte: oneHourAgo,
-              lt: now,
-            },
-          },
-          select: {
-            id: true,
-            userId: true,
-          },
-          take: this.BATCH_SIZE,
-          ...(cursor && { skip: 1, cursor: { id: cursor } }),
-          orderBy: { id: 'asc' },
-        });
-
-        if (subscriptions.length === 0) break;
-
-        // Process in smaller batches
-        for (let i = 0; i < subscriptions.length; i += this.NOTIFICATION_BATCH_SIZE) {
-          const batch = subscriptions.slice(i, i + this.NOTIFICATION_BATCH_SIZE);
-          
-          const notifications: Array<{
-            userId: number;
-            type: NotificationType;
-            title: string;
-            message: string;
-          }> = [];
-
-          // Use transaction to update status and create notifications atomically
-          await this.prisma.$transaction(
-            async (tx) => {
-              for (const subscription of batch) {
-                try {
-                  // Update subscription status
-                  await tx.userSubscription.update({
-                    where: { id: subscription.id },
-                    data: { status: SubscriptionStatus.EXPIRED },
-                  });
-                  expiredCount++;
-
-                  // Check if notification already exists
-                  const existingNotification = await tx.notification.findFirst({
-                    where: {
-                      userId: subscription.userId,
-                      type: NotificationType.SUBSCRIPTION_EXPIRED,
-                      createdAt: {
-                        gte: oneHourAgo,
-                      },
-                    },
-                    select: { id: true },
-                  });
-
-                  if (!existingNotification) {
-                    notifications.push({
-                      userId: subscription.userId,
-                      type: NotificationType.SUBSCRIPTION_EXPIRED,
-                      title: 'Subscription Expired',
-                      message: 'Your subscription has expired',
-                    });
-                  }
-                } catch (error) {
-                  this.logger.error(
-                    `Error processing expired subscription ${subscription.id}`,
-                    error,
-                  );
-                }
-              }
-
-              // Bulk create notifications
-              if (notifications.length > 0) {
-                await tx.notification.createMany({
-                  data: notifications,
-                  skipDuplicates: true,
-                });
-                notificationCount += notifications.length;
-              }
-            },
-            {
-              timeout: 30000, // 30 second timeout
-            },
-          );
-        }
-
-        const batchLength = subscriptions.length;
-        processedCount += batchLength;
-        cursor = subscriptions[batchLength - 1]?.id;
-
-        // Memory cleanup
-        subscriptions.length = 0;
-
-        if (batchLength < this.BATCH_SIZE) break;
-      }
-
-      this.logger.log(
-        `Processed ${processedCount} subscriptions, expired ${expiredCount}, created ${notificationCount} notifications`,
-      );
-    } catch (error) {
-      this.logger.error('Error checking expired subscriptions', error);
-    }
+    // No-op: Fixed tiers don't expire
+    this.logger.log('Skipping subscription expiration check (fixed tiers)');
   }
 
   /**

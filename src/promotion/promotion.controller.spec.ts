@@ -1,8 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PromotionController } from './promotion.controller';
 import { PromotionService } from './promotion.service';
-import { CreatePromotionDto } from './dto/create-promotion.dto';
-import { UpdatePromotionDto } from './dto/update-promotion.dto';
 
 describe('PromotionController', () => {
   let controller: PromotionController;
@@ -15,6 +13,7 @@ describe('PromotionController', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    addProductsToPromotion: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -30,120 +29,216 @@ describe('PromotionController', () => {
 
     controller = module.get<PromotionController>(PromotionController);
     service = module.get<PromotionService>(PromotionService);
-  });
 
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('GET /promotions', () => {
-    it('should return array of PromotionResponseDto matching Swagger schema', async () => {
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  describe('create', () => {
+    it('should create a promotion with multiple products', async () => {
+      const createPromotionDto = {
+        title: 'Summer Sale',
+        type: 'percentage',
+        description: '25% off',
+        discount: 25,
+        productIds: [1, 2, 3],
+      };
+
+      const mockPromotion = {
+        id: 1,
+        title: 'Summer Sale',
+        type: 'percentage',
+        description: '25% off',
+        startsAt: new Date(),
+        endsAt: null,
+        active: true,
+        discount: 25,
+        promotionProducts: [
+          {
+            id: 1,
+            promotionId: 1,
+            productId: 1,
+            createdAt: new Date(),
+            product: {
+              id: 1,
+              name: 'Product 1',
+              price: 100,
+              storeId: 1,
+            },
+          },
+          {
+            id: 2,
+            promotionId: 1,
+            productId: 2,
+            createdAt: new Date(),
+            product: {
+              id: 2,
+              name: 'Product 2',
+              price: 200,
+              storeId: 1,
+            },
+          },
+        ],
+      };
+
+      mockPromotionService.create.mockResolvedValue(mockPromotion);
+
+      const result = await controller.create(createPromotionDto);
+
+      expect(result).toEqual(mockPromotion);
+      expect(mockPromotionService.create).toHaveBeenCalledWith(
+        createPromotionDto,
+      );
+    });
+  });
+
+  describe('findAll', () => {
+    it('should return all promotions', async () => {
       const mockPromotions = [
-        { id: 1, discount: 10, productId: 1 },
-        { id: 2, discount: 20, productId: 2 },
+        {
+          id: 1,
+          title: 'Promo 1',
+          promotionProducts: [],
+        },
+        {
+          id: 2,
+          title: 'Promo 2',
+          promotionProducts: [],
+        },
       ];
 
       mockPromotionService.findAll.mockResolvedValue(mockPromotions);
 
       const result = await controller.findAll();
 
+      expect(result).toEqual(mockPromotions);
       expect(mockPromotionService.findAll).toHaveBeenCalled();
-      expect(Array.isArray(result)).toBe(true);
     });
   });
 
-  describe('GET /promotions/active', () => {
-    it('should return array of active PromotionResponseDto matching Swagger schema', async () => {
-      const mockPromotions = [{ id: 1, discountPercentage: 10, active: true }];
+  describe('findActive', () => {
+    it('should return only active promotions', async () => {
+      const mockActivePromotions = [
+        {
+          id: 1,
+          title: 'Active Promo',
+          active: true,
+          promotionProducts: [],
+        },
+      ];
 
-      mockPromotionService.findActive.mockResolvedValue(mockPromotions);
+      mockPromotionService.findActive.mockResolvedValue(mockActivePromotions);
 
       const result = await controller.findActive();
 
+      expect(result).toEqual(mockActivePromotions);
       expect(mockPromotionService.findActive).toHaveBeenCalled();
-      expect(Array.isArray(result)).toBe(true);
     });
   });
 
-  describe('GET /promotions/:id', () => {
-    it('should return PromotionResponseDto matching Swagger schema', async () => {
+  describe('findOne', () => {
+    it('should return a single promotion by id', async () => {
       const mockPromotion = {
         id: 1,
-        discount: 10,
-        productId: 1,
+        title: 'Test Promo',
+        promotionProducts: [],
       };
 
       mockPromotionService.findOne.mockResolvedValue(mockPromotion);
 
       const result = await controller.findOne(1);
 
-      expect(mockPromotionService.findOne).toHaveBeenCalledWith(1);
       expect(result).toEqual(mockPromotion);
+      expect(mockPromotionService.findOne).toHaveBeenCalledWith(1);
     });
   });
 
-  describe('POST /promotions', () => {
-    it('should return PromotionResponseDto matching Swagger schema on successful creation', async () => {
-      const createDto: CreatePromotionDto = {
-        title: 'Holiday Sale',
-        type: 'percentage',
-        description: 'Up to 30% off',
-        discount: 15,
-        productId: 1,
-        startsAt: new Date(),
+  describe('update', () => {
+    it('should update a promotion', async () => {
+      const updatePromotionDto = {
+        title: 'Updated Promo',
+        discount: 30,
       };
 
-      const createdPromotion = {
+      const mockUpdatedPromotion = {
         id: 1,
-        ...createDto,
-        active: true,
+        title: 'Updated Promo',
+        discount: 30,
+        promotionProducts: [],
       };
 
-      mockPromotionService.create.mockResolvedValue(createdPromotion);
+      mockPromotionService.update.mockResolvedValue(mockUpdatedPromotion);
 
-      const result = await controller.create(createDto);
+      const result = await controller.update(1, updatePromotionDto);
 
-      expect(mockPromotionService.create).toHaveBeenCalledWith(createDto);
-      expect(result).toHaveProperty('id');
-      expect(result).toHaveProperty('discount', createDto.discount);
+      expect(result).toEqual(mockUpdatedPromotion);
+      expect(mockPromotionService.update).toHaveBeenCalledWith(
+        1,
+        updatePromotionDto,
+      );
     });
   });
 
-  describe('PATCH /promotions/:id', () => {
-    it('should return PromotionResponseDto matching Swagger schema on successful update', async () => {
-      const updateDto: UpdatePromotionDto = {
-        discount: 20,
-      };
-
-      const updatedPromotion = {
+  describe('remove', () => {
+    it('should delete a promotion', async () => {
+      const mockDeletedPromotion = {
         id: 1,
-        discount: 20,
-        productId: 1,
+        title: 'Deleted Promo',
       };
 
-      mockPromotionService.update.mockResolvedValue(updatedPromotion);
-
-      const result = await controller.update(1, updateDto);
-
-      expect(mockPromotionService.update).toHaveBeenCalledWith(1, updateDto);
-      expect(result.discount).toBe(updateDto.discount);
-    });
-  });
-
-  describe('DELETE /promotions/:id', () => {
-    it('should return PromotionResponseDto matching Swagger schema on successful deletion', async () => {
-      const deletedPromotion = {
-        id: 1,
-        discount: 10,
-      };
-
-      mockPromotionService.remove.mockResolvedValue(deletedPromotion);
+      mockPromotionService.remove.mockResolvedValue(mockDeletedPromotion);
 
       const result = await controller.remove(1);
 
+      expect(result).toEqual(mockDeletedPromotion);
       expect(mockPromotionService.remove).toHaveBeenCalledWith(1);
-      expect(result).toEqual(deletedPromotion);
+    });
+  });
+
+  describe('addProducts', () => {
+    it('should add products to an existing promotion', async () => {
+      const mockRequest: any = {
+        user: {
+          sub: 1,
+          email: 'retailer@example.com',
+          role: 'RETAILER',
+        },
+      };
+
+      const addProductsDto = {
+        productIds: [4, 5, 6],
+      };
+
+      const mockUpdatedPromotion = {
+        id: 1,
+        title: 'Test Promo',
+        promotionProducts: [
+          { id: 1, promotionId: 1, productId: 1 },
+          { id: 2, promotionId: 1, productId: 4 },
+          { id: 3, promotionId: 1, productId: 5 },
+          { id: 4, promotionId: 1, productId: 6 },
+        ],
+      };
+
+      mockPromotionService.addProductsToPromotion.mockResolvedValue(
+        mockUpdatedPromotion,
+      );
+
+      const result = await controller.addProducts(
+        mockRequest,
+        1,
+        addProductsDto,
+      );
+
+      expect(result).toEqual(mockUpdatedPromotion);
+      expect(mockPromotionService.addProductsToPromotion).toHaveBeenCalledWith(
+        1,
+        1,
+        addProductsDto,
+      );
     });
   });
 });
-

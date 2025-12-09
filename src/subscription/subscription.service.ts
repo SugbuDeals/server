@@ -1,463 +1,226 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import {
-  Prisma,
-  Subscription,
-  UserSubscription,
-  SubscriptionStatus,
-  SubscriptionPlan,
-  BillingCycle,
-} from 'generated/prisma';
+import { SubscriptionTier, UserRole } from 'generated/prisma';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { NotificationService } from 'src/notification/notification.service';
-import {
-  SubscriptionAnalyticsDTO,
-  SubscriptionCountByPlan,
-  SubscriptionCountByStatus,
-  SubscriptionCountByBillingCycle,
-} from './dto/subscription-analytics.dto';
 
 /**
  * Subscription Service
  * 
- * Provides subscription plan and user subscription management operations.
- * Handles CRUD operations for subscription plans (admin-defined templates)
- * and user subscriptions (retailer subscriptions to plans).
+ * Manages fixed subscription tiers (BASIC and PRO) for users.
+ * BASIC tier is assigned automatically on user registration.
  * 
  * Features:
- * - Subscription plan management (admin-only)
- * - Retailer subscription joining, updating, and cancellation
- * - Automatic cancellation of existing subscriptions when joining new ones
- * - Subscription analytics for admin dashboard
- * - Notification triggers for new subscription availability
+ * - Upgrade/downgrade between BASIC and PRO tiers
+ * - Get current user tier
+ * - Analytics for admin dashboard
  * 
  * Business Rules:
- * - Retailers can only have one active subscription at a time
- * - Joining a new subscription automatically cancels the current one
- * - Subscription plans are templates that retailers subscribe to
+ * - All users start with BASIC tier
+ * - PRO tier costs 100 PHP per month
+ * - BASIC consumers: 1km radius limit
+ * - PRO consumers: 3km radius limit
+ * - BASIC retailers: 10 products, 5 promotions, 10 products per promotion
+ * - PRO retailers: unlimited products, promotions, and products per promotion
  */
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
 
-  constructor(
-    private prisma: PrismaService,
-    private notificationService: NotificationService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
-   * Retrieves an admin-defined subscription plan by its unique identifier.
+   * Upgrades a user to PRO tier.
    * 
-   * @param params - Query parameters
-   * @param params.where - Unique identifier criteria (id)
-   * @param params.include - Related data to include
-   * @returns Promise resolving to the found subscription plan or null if not found
+   * @param userId - The user ID to upgrade
+   * @returns Promise resolving to the updated user (without password)
+   * @throws {BadRequestException} If user not found or already on PRO tier
+   * 
+   * @example
+   * ```typescript
+   * const user = await subscriptionService.upgradeToPro(1);
+   * // User tier is now PRO
+   * ```
    */
-  async subscription(params: {
-    where: Prisma.SubscriptionWhereUniqueInput;
-    include?: Prisma.SubscriptionInclude;
-  }): Promise<Subscription | null> {
-    const { where, include } = params;
-    return this.prisma.subscription.findUnique({ where, include });
-  }
-
-  /**
-   * Retrieves multiple subscription plans.
-   * 
-   * Supports pagination, filtering, sorting, and including related data.
-   * 
-   * @param params - Query parameters for finding subscription plans
-   * @param params.skip - Number of records to skip for pagination
-   * @param params.take - Number of records to return
-   * @param params.cursor - Cursor for cursor-based pagination
-   * @param params.where - Filter conditions
-   * @param params.orderBy - Sorting criteria
-   * @param params.include - Related data to include
-   * @returns Promise resolving to an array of subscription plans
-   */
-  async subscriptions(params: {
-    skip?: number;
-    take?: number;
-    cursor?: Prisma.SubscriptionWhereUniqueInput;
-    where?: Prisma.SubscriptionWhereInput;
-    orderBy?: Prisma.SubscriptionOrderByWithRelationInput;
-    include?: Prisma.SubscriptionInclude;
-  }): Promise<Subscription[]> {
-    const { skip, take, cursor, where, orderBy, include } = params;
-    return this.prisma.subscription.findMany({
-      skip,
-      take,
-      cursor,
-      where,
-      orderBy,
-      include,
+  async upgradeToPro(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
     });
-  }
 
-  /**
-   * Creates a new subscription plan (admin-defined template).
-   * 
-   * After creation, if the plan is active, all retailers are notified
-   * about the new subscription availability.
-   * 
-   * @param params - Create parameters
-   * @param params.data - The data for creating the subscription plan
-   * @returns Promise resolving to the newly created subscription plan
-   * @throws {PrismaClientKnownRequestError} If subscription creation fails
-   */
-  async createPlan(params: {
-    data: Prisma.SubscriptionCreateInput;
-  }): Promise<Subscription> {
-    const { data } = params;
-    const subscription = await this.prisma.subscription.create({ data });
-
-    this.logger.log(`Subscription plan created - Plan ID: ${subscription.id}, Name: ${subscription.name}, Plan: ${subscription.plan}, Active: ${subscription.isActive}`);
-
-    // Notify all retailers about the new subscription
-    if (subscription.isActive) {
-      this.notificationService
-        .notifyNewSubscriptionAvailable(subscription.id)
-        .catch((err: unknown) => {
-          this.logger.error(`Error creating subscription availability notification for plan ${subscription.id}:`, err);
-        });
+    if (!user) {
+      this.logger.warn(`Upgrade failed: User not found - User ID: ${userId}`);
+      throw new BadRequestException('User not found');
     }
 
-    return subscription;
-  }
-
-  /**
-   * Updates an existing subscription plan.
-   * 
-   * @param params - Update parameters
-   * @param params.where - Unique identifier of the subscription plan to update
-   * @param params.data - The data to update the subscription plan with
-   * @param params.include - Related data to include in response
-   * @returns Promise resolving to the updated subscription plan
-   * @throws {PrismaClientKnownRequestError} If the subscription plan is not found
-   */
-  async updatePlan(params: {
-    where: Prisma.SubscriptionWhereUniqueInput;
-    data: Prisma.SubscriptionUpdateInput;
-    include?: Prisma.SubscriptionInclude;
-  }): Promise<Subscription> {
-    const { where, data, include } = params;
-    return this.prisma.subscription.update({ where, data, include });
-  }
-
-  /**
-   * Deletes a subscription plan.
-   * 
-   * Note: This does not delete user subscriptions that reference this plan.
-   * User subscriptions maintain a reference to the plan even after deletion.
-   * 
-   * @param params - Delete parameters
-   * @param params.where - Unique identifier of the subscription plan to delete
-   * @returns Promise resolving to the deleted subscription plan
-   * @throws {PrismaClientKnownRequestError} If the subscription plan is not found
-   */
-  async deletePlan(params: {
-    where: Prisma.SubscriptionWhereUniqueInput;
-  }): Promise<Subscription> {
-    const { where } = params;
-    return this.prisma.subscription.delete({ where });
-  }
-
-  /**
-   * Retrieves a single user subscription record.
-   */
-  async userSubscription(params: {
-    where: Prisma.UserSubscriptionWhereUniqueInput;
-    include?: Prisma.UserSubscriptionInclude;
-  }): Promise<UserSubscription | null> {
-    const { where, include } = params;
-    return this.prisma.userSubscription.findUnique({ where, include });
-  }
-
-  /**
-   * Retrieves user subscription records.
-   */
-  async userSubscriptions(params: {
-    skip?: number;
-    take?: number;
-    cursor?: Prisma.UserSubscriptionWhereUniqueInput;
-    where?: Prisma.UserSubscriptionWhereInput;
-    orderBy?: Prisma.UserSubscriptionOrderByWithRelationInput;
-    include?: Prisma.UserSubscriptionInclude;
-  }): Promise<UserSubscription[]> {
-    const { skip, take, cursor, where, orderBy, include } = params;
-    return this.prisma.userSubscription.findMany({
-      skip,
-      take,
-      cursor,
-      where,
-      orderBy,
-      include,
-    });
-  }
-
-  /**
-   * Gets the active user subscription for a retailer.
-   * 
-   * Returns the most recently created active subscription for the user.
-   * Retailers can only have one active subscription at a time.
-   * 
-   * @param userId - The user ID to get the active subscription for
-   * @returns Promise resolving to the active user subscription (with plan details) or null if none exists
-   */
-  async getActiveUserSubscription(
-    userId: number,
-  ): Promise<UserSubscription | null> {
-    return this.prisma.userSubscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-      },
-      include: {
-        subscription: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  /**
-   * Joins a subscription for a retailer. Cancels any existing active subscription first.
-   * Ensures only one active subscription per user.
-   * @param userId - The user ID joining the subscription
-   * @param subscriptionId - The subscription ID to join (template subscription)
-   * @returns Promise resolving to the newly created subscription
-   * @throws {BadRequestException} If subscription not found
-   */
-  async joinSubscription(
-    userId: number,
-    subscriptionId: number,
-  ): Promise<UserSubscription> {
-    const templateSubscription = await this.subscription({
-      where: { id: subscriptionId },
-    });
-
-    if (!templateSubscription || !templateSubscription.isActive) {
-      this.logger.warn(`Subscription join failed: Subscription not available - User ID: ${userId}, Subscription ID: ${subscriptionId}`);
-      throw new BadRequestException('Subscription not available');
+    if (user.subscriptionTier === SubscriptionTier.PRO) {
+      this.logger.warn(`Upgrade failed: User already on PRO tier - User ID: ${userId}`);
+      throw new BadRequestException('User already has PRO tier');
     }
 
-    // Ensure retailers only have a single active subscription
-    const activeSubscription = await this.getActiveUserSubscription(userId);
-    if (activeSubscription) {
-      this.logger.log(`Cancelling existing subscription - User ID: ${userId}, Old Subscription ID: ${activeSubscription.id}`);
-      await this.prisma.userSubscription.update({
-        where: { id: activeSubscription.id },
-        data: {
-          status: SubscriptionStatus.CANCELLED,
-          cancelledAt: new Date(),
-        },
-      });
-    }
-
-    this.logger.log(`User joining subscription - User ID: ${userId}, Subscription ID: ${subscriptionId}, Plan: ${templateSubscription.plan}`);
-    return this.prisma.userSubscription.create({
-      data: {
-        price: templateSubscription.price,
-        billingCycle: templateSubscription.billingCycle,
-        status: SubscriptionStatus.ACTIVE,
-        startsAt: new Date(),
-        endsAt: templateSubscription.endsAt,
-        user: {
-          connect: { id: userId },
-        },
-        subscription: {
-          connect: { id: subscriptionId },
-        },
-      },
-      include: {
-        subscription: true,
-      },
+    this.logger.log(`User upgrading to PRO - User ID: ${userId}, Role: ${user.role}`);
+    
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionTier: SubscriptionTier.PRO },
     });
+
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    return userWithoutPassword;
   }
 
   /**
-   * Updates the retailer's active subscription to a different subscription plan.
-   * @param userId - The user ID whose subscription to update
-   * @param subscriptionId - The subscription ID to update to (template subscription)
-   * @returns Promise resolving to the newly created subscription
-   * @throws {BadRequestException} If no active subscription exists or template not found
+   * Downgrades a user to BASIC tier.
+   * 
+   * @param userId - The user ID to downgrade
+   * @returns Promise resolving to the updated user (without password)
+   * @throws {BadRequestException} If user not found or already on BASIC tier
+   * 
+   * @example
+   * ```typescript
+   * const user = await subscriptionService.downgradeToBasic(1);
+   * // User tier is now BASIC
+   * ```
    */
-  async updateRetailerSubscription(
-    userId: number,
-    subscriptionId: number,
-  ): Promise<UserSubscription> {
-    const templateSubscription = await this.subscription({
-      where: { id: subscriptionId },
+  async downgradeToBasic(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
     });
 
-    if (!templateSubscription || !templateSubscription.isActive) {
-      throw new BadRequestException('Subscription not available');
+    if (!user) {
+      this.logger.warn(`Downgrade failed: User not found - User ID: ${userId}`);
+      throw new BadRequestException('User not found');
     }
 
-    const activeSubscription = await this.getActiveUserSubscription(userId);
-
-    if (!activeSubscription) {
-      throw new BadRequestException('No active subscription found');
+    if (user.subscriptionTier === SubscriptionTier.BASIC) {
+      this.logger.warn(`Downgrade failed: User already on BASIC tier - User ID: ${userId}`);
+      throw new BadRequestException('User already has BASIC tier');
     }
 
-    // Cancel current subscription history and create a new record
-    await this.prisma.userSubscription.update({
-      where: { id: activeSubscription.id },
-      data: {
-        status: SubscriptionStatus.CANCELLED,
-        cancelledAt: new Date(),
-      },
+    this.logger.log(`User downgrading to BASIC - User ID: ${userId}, Role: ${user.role}`);
+    
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionTier: SubscriptionTier.BASIC },
     });
 
-    return this.prisma.userSubscription.create({
-      data: {
-        price: templateSubscription.price,
-        billingCycle: templateSubscription.billingCycle,
-        status: SubscriptionStatus.ACTIVE,
-        startsAt: new Date(),
-        endsAt: templateSubscription.endsAt,
-        user: {
-          connect: { id: userId },
-        },
-        subscription: {
-          connect: { id: subscriptionId },
-        },
-      },
-      include: {
-        subscription: true,
-      },
-    });
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    return userWithoutPassword;
   }
 
   /**
-   * Cancels the retailer's active subscription.
-   * @param userId - The user ID whose subscription to cancel
-   * @returns Promise resolving to the cancelled subscription
-   * @throws {BadRequestException} If no active subscription exists
+   * Gets the current subscription tier for a user.
+   * 
+   * @param userId - The user ID to get tier for
+   * @returns Promise resolving to an object with tier and role
+   * @throws {BadRequestException} If user not found
+   * 
+   * @example
+   * ```typescript
+   * const tierInfo = await subscriptionService.getCurrentTier(1);
+   * // Returns: { tier: 'BASIC', role: 'CONSUMER' }
+   * ```
    */
-  async cancelRetailerSubscription(userId: number): Promise<UserSubscription> {
-    const activeSubscription = await this.getActiveUserSubscription(userId);
-
-    if (!activeSubscription) {
-      this.logger.warn(`Subscription cancellation failed: No active subscription - User ID: ${userId}`);
-      throw new BadRequestException('No active subscription found');
-    }
-
-    this.logger.log(`User cancelling subscription - User ID: ${userId}, Subscription ID: ${activeSubscription.id}`);
-    return this.prisma.userSubscription.update({
-      where: { id: activeSubscription.id },
-      data: {
-        status: SubscriptionStatus.CANCELLED,
-        cancelledAt: new Date(),
-      },
-      include: {
-        subscription: true,
+  async getCurrentTier(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        subscriptionTier: true,
+        role: true,
+        email: true,
+        name: true,
       },
     });
+
+    if (!user) {
+      this.logger.warn(`Get tier failed: User not found - User ID: ${userId}`);
+      throw new BadRequestException('User not found');
+    }
+
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      tier: user.subscriptionTier,
+      role: user.role,
+    };
   }
 
   /**
    * Gets comprehensive subscription analytics for admin dashboard.
    * 
    * Calculates:
-   * - Total subscriptions and counts by status (active, cancelled, expired, pending)
-   * - Counts by plan type (FREE, BASIC, PREMIUM)
-   * - Counts by billing cycle (MONTHLY, YEARLY)
-   * - Total revenue from active subscriptions
-   * - Average subscription price
-   * - Recent subscriptions (last 30 days)
-   * - Subscriptions created this month
+   * - Total users by tier (BASIC, PRO)
+   * - Users by tier and role (CONSUMER-BASIC, CONSUMER-PRO, RETAILER-BASIC, RETAILER-PRO)
+   * - Potential revenue (PRO users × 100 PHP)
    * 
    * @returns Promise resolving to subscription analytics data
+   * 
+   * @example
+   * ```typescript
+   * const analytics = await subscriptionService.getAnalytics();
+   * // Returns detailed tier distribution and revenue
+   * ```
    */
-  async getAnalytics(): Promise<SubscriptionAnalyticsDTO> {
-    const userSubscriptions = await this.prisma.userSubscription.findMany({
-      include: {
-        subscription: true,
+  async getAnalytics() {
+    const users = await this.prisma.user.findMany({
+      select: {
+        id: true,
+        role: true,
+        subscriptionTier: true,
       },
     });
 
-    const total = userSubscriptions.length;
-    const active = userSubscriptions.filter(
-      (s) => s.status === SubscriptionStatus.ACTIVE,
+    const totalUsers = users.length;
+    const basicUsers = users.filter((u) => u.subscriptionTier === SubscriptionTier.BASIC).length;
+    const proUsers = users.filter((u) => u.subscriptionTier === SubscriptionTier.PRO).length;
+
+    const consumerBasic = users.filter(
+      (u) => u.role === UserRole.CONSUMER && u.subscriptionTier === SubscriptionTier.BASIC,
     ).length;
-    const cancelled = userSubscriptions.filter(
-      (s) => s.status === SubscriptionStatus.CANCELLED,
+    const consumerPro = users.filter(
+      (u) => u.role === UserRole.CONSUMER && u.subscriptionTier === SubscriptionTier.PRO,
     ).length;
-    const expired = userSubscriptions.filter(
-      (s) => s.status === SubscriptionStatus.EXPIRED,
+    const retailerBasic = users.filter(
+      (u) => u.role === UserRole.RETAILER && u.subscriptionTier === SubscriptionTier.BASIC,
     ).length;
-    const pending = userSubscriptions.filter(
-      (s) => s.status === SubscriptionStatus.PENDING,
+    const retailerPro = users.filter(
+      (u) => u.role === UserRole.RETAILER && u.subscriptionTier === SubscriptionTier.PRO,
     ).length;
-
-    const byPlan: SubscriptionCountByPlan[] = Object.values(
-      SubscriptionPlan,
-    ).map((plan) => ({
-      plan,
-      count: userSubscriptions.filter(
-        (s) => s.subscription?.plan === plan,
-      ).length,
-    }));
-
-    const byStatus: SubscriptionCountByStatus[] = Object.values(
-      SubscriptionStatus,
-    ).map((status) => ({
-      status,
-      count: userSubscriptions.filter((s) => s.status === status).length,
-    }));
-
-    const byBillingCycle: SubscriptionCountByBillingCycle[] = Object.values(
-      BillingCycle,
-    ).map((billingCycle) => ({
-      billingCycle,
-      count: userSubscriptions.filter(
-        (s) => s.billingCycle === billingCycle,
-      ).length,
-    }));
-
-    const activeSubscriptions = userSubscriptions.filter(
-      (s) => s.status === SubscriptionStatus.ACTIVE,
-    );
-    const totalRevenue = activeSubscriptions.reduce(
-      (sum, sub) => sum + Number(sub.price),
-      0,
-    );
-
-    const averagePrice =
-      userSubscriptions.length > 0
-        ? userSubscriptions.reduce(
-            (sum, sub) => sum + Number(sub.price),
-            0,
-          ) / userSubscriptions.length
-        : 0;
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentSubscriptions = userSubscriptions.filter(
-      (s) => s.createdAt >= thirtyDaysAgo,
+    const adminBasic = users.filter(
+      (u) => u.role === UserRole.ADMIN && u.subscriptionTier === SubscriptionTier.BASIC,
+    ).length;
+    const adminPro = users.filter(
+      (u) => u.role === UserRole.ADMIN && u.subscriptionTier === SubscriptionTier.PRO,
     ).length;
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const subscriptionsThisMonth = userSubscriptions.filter(
-      (s) => s.createdAt >= startOfMonth,
-    ).length;
+    // PRO tier costs 100 PHP per month
+    const monthlyRevenue = proUsers * 100;
 
     return {
-      total,
-      active,
-      cancelled,
-      expired,
-      pending,
-      byPlan,
-      byStatus,
-      byBillingCycle,
-      totalRevenue: totalRevenue.toFixed(2),
-      averagePrice: averagePrice.toFixed(2),
-      recentSubscriptions,
-      subscriptionsThisMonth,
+      totalUsers,
+      basicUsers,
+      proUsers,
+      byRoleAndTier: {
+        consumer: {
+          basic: consumerBasic,
+          pro: consumerPro,
+          total: consumerBasic + consumerPro,
+        },
+        retailer: {
+          basic: retailerBasic,
+          pro: retailerPro,
+          total: retailerBasic + retailerPro,
+        },
+        admin: {
+          basic: adminBasic,
+          pro: adminPro,
+          total: adminBasic + adminPro,
+        },
+      },
+      revenue: {
+        monthly: monthlyRevenue,
+        yearly: monthlyRevenue * 12,
+        currency: 'PHP',
+      },
     };
   }
 }
-

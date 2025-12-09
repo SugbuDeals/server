@@ -479,16 +479,18 @@ RESPONSE STYLE:
       // Filter promotions to only include those from verified stores
       const verifiedPromotions = await Promise.all(
         allPromotions
-          .filter((p): p is Promotion => p !== null)
+          .filter((p): p is NonNullable<typeof p> => p !== null)
           .map(async (promo) => {
-            if (!promo.productId) {
+            // Check if promotion has products
+            if (!promo.promotionProducts || promo.promotionProducts.length === 0) {
               return null;
             }
-            const product = await this.productService.product({ id: promo.productId });
-            if (!product || !product.storeId) {
+            // Get the first product to check store verification
+            const firstProduct = promo.promotionProducts[0]?.product;
+            if (!firstProduct || !firstProduct.storeId) {
               return null;
             }
-            const store = await this.storeService.store({ where: { id: product.storeId } });
+            const store = await this.storeService.store({ where: { id: firstProduct.storeId } });
             if (!store || store.verificationStatus !== StoreVerificationStatus.VERIFIED || !store.isActive) {
               return null;
             }
@@ -497,7 +499,7 @@ RESPONSE STYLE:
       );
 
       response.promotions = verifiedPromotions
-        .filter((p): p is Promotion => p !== null)
+        .filter((p): p is NonNullable<typeof p> => p !== null)
         .map((promo) => ({
           id: promo.id,
           title: promo.title,
@@ -506,7 +508,7 @@ RESPONSE STYLE:
           startsAt: promo.startsAt,
           endsAt: promo.endsAt,
           discount: promo.discount,
-          productId: promo.productId,
+          productCount: promo.promotionProducts.length,
         }));
     }
 
@@ -1029,15 +1031,16 @@ RESPONSE STYLE:
       // Note: findActive() doesn't filter by verification, so we'll filter manually
       const allActivePromotions = await this.promotionService.findActive();
       
-      // Fetch product and store data for promotions that have productId
+      // Fetch product and store data for promotions
       // Filter to only include promotions from verified stores
       const promotionsWithLocation = await Promise.all(
         allActivePromotions.map(async (promo) => {
-          if (!promo.productId) {
+          if (!promo.promotionProducts || promo.promotionProducts.length === 0) {
             return { promo, product: null, store: null, distance: null, isVerified: false };
           }
           
-          const product = await this.productService.product({ id: promo.productId });
+          // Use the first product from the promotion
+          const product = promo.promotionProducts[0]?.product;
           if (!product || !product.storeId) {
             return { promo, product, store: null, distance: null, isVerified: false };
           }
@@ -1639,16 +1642,18 @@ RESPONSE STYLE:
       // Filter promotions to only include those from verified stores
       const verifiedPromotions = await Promise.all(
         allPromotions
-          .filter((p): p is Promotion => p !== null)
+          .filter((p): p is NonNullable<typeof p> => p !== null)
           .map(async (promo) => {
-            if (!promo.productId) {
+            // Check if promotion has products
+            if (!promo.promotionProducts || promo.promotionProducts.length === 0) {
               return null;
             }
-            const product = await this.productService.product({ id: promo.productId });
-            if (!product || !product.storeId) {
+            // Get the first product to check store verification
+            const firstProduct = promo.promotionProducts[0]?.product;
+            if (!firstProduct || !firstProduct.storeId) {
               return null;
             }
-            const store = await this.storeService.store({ where: { id: product.storeId } });
+            const store = await this.storeService.store({ where: { id: firstProduct.storeId } });
             if (!store || store.verificationStatus !== StoreVerificationStatus.VERIFIED || !store.isActive) {
               return null;
             }
@@ -1657,7 +1662,7 @@ RESPONSE STYLE:
       );
 
       response.promotions = verifiedPromotions
-        .filter((p): p is Promotion => p !== null)
+        .filter((p): p is NonNullable<typeof p> => p !== null)
         .map((promo) => ({
           id: promo.id,
           title: promo.title,
@@ -1666,7 +1671,7 @@ RESPONSE STYLE:
           startsAt: promo.startsAt,
           endsAt: promo.endsAt,
           discount: promo.discount,
-          productId: promo.productId,
+          productCount: promo.promotionProducts.length,
         }));
     }
 

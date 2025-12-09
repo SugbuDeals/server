@@ -37,6 +37,8 @@ import { Prisma, UserRole } from 'generated/prisma';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/roles.guard';
+import { SubscriptionTierGuard } from 'src/subscription/guards/subscription-tier.guard';
+import { TierLimit, TierLimitType } from 'src/subscription/decorators/tier-limit.decorator';
 
 /**
  * Store Controller
@@ -159,18 +161,24 @@ export class StoreController {
    * within the specified radius, sorted by distance (closest first).
    * Maximum 50 results are returned.
    * 
+   * Subscription Tier Limits (Consumers only):
+   * - BASIC: Maximum 1km radius
+   * - PRO: Maximum 3km radius
+   * - Retailers: No limit
+   * 
    * @param latitude - Latitude of the search center point (-90 to 90)
    * @param longitude - Longitude of the search center point (-180 to 180)
    * @param radius - Search radius in kilometers (default: 10km)
    * @returns Array of stores with calculated distance field (in km), sorted by proximity
    */
   @Get('nearby')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionTierGuard)
+  @TierLimit(TierLimitType.CONSUMER_RADIUS)
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Find stores near a location',
     description:
-      'Returns stores within a specified radius of the given coordinates, sorted by distance. Uses the Haversine formula to calculate distances in kilometers. Maximum 50 results.'
+      'Returns stores within a specified radius of the given coordinates, sorted by distance. Uses the Haversine formula to calculate distances in kilometers. Maximum 50 results. TIER LIMITS (Consumers only): BASIC tier allows max 1km radius, PRO tier allows max 3km radius. Retailers have no limit.',
   })
   @ApiQuery({
     name: 'latitude',
@@ -204,6 +212,19 @@ export class StoreController {
     type: [StoreWithDistanceResponseDto]
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({
+    description: 'Forbidden - Radius exceeds tier limit',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: {
+          type: 'string',
+          example: 'Your BASIC tier allows a maximum radius of 1km. Upgrade to PRO for extended radius.',
+        },
+      },
+    },
+  })
   @ApiBadRequestResponse({ 
     description: 'Invalid coordinates or radius',
     schema: {
