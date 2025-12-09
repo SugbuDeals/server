@@ -1,9 +1,10 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards, Request } from '@nestjs/common';
 import { ApiBody, ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiUnauthorizedResponse, ApiBadRequestResponse, ApiInternalServerErrorResponse } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { ChatRequestDto } from './dto/chat.dto';
 import { ChatResponseDto } from './dto/chat-response.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
 /**
  * AI Controller
@@ -153,8 +154,14 @@ The chatbot uses Groq's local tool calling pattern following best practices. Whe
       }
     }
   })
-  async chat(@Body() chatRequest: ChatRequestDto): Promise<ChatResponseDto> {
+  async chat(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Body() chatRequest: ChatRequestDto,
+  ): Promise<ChatResponseDto> {
+    const user = req.user;
     return this.aiService.chat(
+      user.sub, // userId
+      user.role, // userRole
       chatRequest.content,
       chatRequest.latitude,
       chatRequest.longitude,

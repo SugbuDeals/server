@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { ChatRequestDto } from './dto/chat.dto';
+import { UserRole } from 'generated/prisma';
 
 describe('AiController', () => {
   let controller: AiController;
@@ -42,11 +43,21 @@ describe('AiController', () => {
         intent: 'chat' as const,
       };
 
+      const mockRequest = {
+        user: {
+          sub: 1,
+          email: 'test@example.com',
+          role: UserRole.CONSUMER,
+        },
+      } as any;
+
       mockAiService.chat.mockResolvedValue(mockResponse);
 
-      const result = await controller.chat(chatRequest);
+      const result = await controller.chat(mockRequest, chatRequest);
 
       expect(mockAiService.chat).toHaveBeenCalledWith(
+        mockRequest.user.sub,
+        mockRequest.user.role,
         chatRequest.content,
         chatRequest.latitude,
         chatRequest.longitude,
