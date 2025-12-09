@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Groq } from 'groq-sdk';
 import { ProductService } from '../product/product.service';
 import { PromotionService } from '../promotion/promotion.service';
-import { Product, Store, Promotion } from 'generated/prisma';
+import { Product, Store, Promotion, SubscriptionTier, UserRole } from 'generated/prisma';
 import { StoreService } from '../store/store.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { toolSchemas } from './types/tool-schemas.types';
 import {
   AvailableTools,
@@ -56,6 +57,7 @@ export class AiService implements OnModuleInit {
     private productService: ProductService,
     private promotionService: PromotionService,
     private storeService: StoreService,
+    private prisma: PrismaService,
   ) {
     // Initialize tool function map
     this.availableFunctions = {
@@ -99,15 +101,25 @@ export class AiService implements OnModuleInit {
    * Uses tool calling to intelligently detect user intent and provide structured responses.
    * All recommendations only include products, stores, and promotions from verified stores.
    * 
+   * **Subscription Tier Enforcement (Consumers only):**
+   * - BASIC tier: Maximum 1km search radius
+   * - PRO tier: Maximum 3km search radius
+   * - Retailers and Admins: No radius limit
+   * 
+   * @param userId - Authenticated user ID for tier checking
+   * @param userRole - User role for tier enforcement
    * @param content - User's message content
    * @param latitude - Optional user latitude for location-aware recommendations (-90 to 90)
    * @param longitude - Optional user longitude for location-aware recommendations (-180 to 180)
-   * @param radius - Optional search radius in kilometers (5, 10, or 15, default: 5)
+   * @param radius - Optional search radius in kilometers (default: 5, capped by subscription tier for consumers)
    * @param count - Maximum number of results (required, 1-10)
    * @param options - Optional chat parameters (temperature, max_tokens, etc.)
    * @returns AI chat response with optional structured data (products/stores/promotions)
+   * @throws {Error} If radius exceeds user's subscription tier limit
    */
   async chat(
+    userId: number,
+    userRole: UserRole,
     content: string,
     latitude: number | undefined,
     longitude: number | undefined,
@@ -128,10 +140,25 @@ export class AiService implements OnModuleInit {
       }
     }
 
-    // Validate radius if provided
-    if (radius !== undefined) {
-      if (![5, 10, 15].includes(radius)) {
-        throw new Error('Radius must be 5, 10, or 15 kilometers');
+    // Get user's subscription tier for radius limit enforcement (consumers only)
+    let effectiveRadius = radius || 5; // Default to 5km if not specified
+    
+    if (userRole === UserRole.CONSUMER) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { subscriptionTier: true },
+      });
+
+      if (user) {
+        const maxRadius = user.subscriptionTier === SubscriptionTier.PRO ? 3 : 1;
+        
+        // Cap the radius to the user's tier limit
+        if (effectiveRadius > maxRadius) {
+          this.logger.warn(
+            `Consumer ${userId} requested ${effectiveRadius}km radius, capped to ${maxRadius}km (${user.subscriptionTier} tier)`,
+          );
+          effectiveRadius = maxRadius;
+        }
       }
     }
 
@@ -231,6 +258,7 @@ RESPONSE STYLE:
             maxResults,
             latitude,
             longitude,
+            effectiveRadius, // Use tier-limited radius
           );
 
           // Regenerate response text based on actual products/stores/promotions returned
@@ -335,6 +363,7 @@ RESPONSE STYLE:
     maxResults: number,
     latitude?: number,
     longitude?: number,
+    radiusKm?: number,
   ): Promise<ChatResponseDto> {
     const response: ChatResponseDto = {
       content,
@@ -658,7 +687,8 @@ RESPONSE STYLE:
   ): Promise<RecommendationResponseDto> {
     // For general chat, we'll use a simple chat call without tool calling
     // Since this is deprecated (we use unified chat endpoint), just return a simple response
-    const response = await this.chat(query, latitude, longitude, undefined, 3);
+    // Note: This requires userId and userRole, but since this is a deprecated path, we'll use dummy values
+    const response = await this.chat(0, UserRole.CONSUMER, query, latitude, longitude, undefined, 3);
     
     return {
       recommendation: response.content,
@@ -1770,7 +1800,8 @@ Format: Numbered list. For each item include exactly 3 short bullets:
     // Use the unified chat endpoint with a system message prepended to the content
     const fullPrompt = `You are a knowledgeable shopping assistant who provides thoughtful product recommendations based on similarities and complementary features.\n\n${prompt}`;
     
-    const response = await this.chat(fullPrompt, undefined, undefined, undefined, count);
+    // Note: This requires userId and userRole, but since this is for similar products, we'll use dummy values
+    const response = await this.chat(0, UserRole.CONSUMER, fullPrompt, undefined, undefined, undefined, count);
 
     return {
       content: response.content,
