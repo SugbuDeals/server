@@ -43,8 +43,10 @@ export class PromotionService {
    * - Notifies users who bookmarked the products or stores about the new promotion
    * 
    * @param createPromotionDto - The data for creating the promotion including product IDs
+   * @param userId - The user ID creating the promotion (for ownership validation)
    * @returns Promise resolving to the newly created promotion (with product relations)
    * @throws {BadRequestException} If promotion creation fails or products don't exist
+   * @throws {ForbiddenException} If products don't belong to user's stores or tier limit exceeded
    * 
    * @example
    * ```typescript
@@ -54,11 +56,24 @@ export class PromotionService {
    *   description: '25% off',
    *   discount: 25,
    *   productIds: [1, 2, 3],
-   * });
+   * }, userId);
    * ```
    */
-  async create(createPromotionDto: CreatePromotionDto) {
+  async create(createPromotionDto: CreatePromotionDto, userId: number) {
     const { productIds, ...promotionData } = createPromotionDto;
+
+    // Get user info for validation
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        subscriptionTier: true, 
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
 
     // Verify all products exist
     const products = await this.prisma.product.findMany({
@@ -68,6 +83,27 @@ export class PromotionService {
 
     if (products.length !== productIds.length) {
       throw new BadRequestException('One or more products not found');
+    }
+
+    // For retailers, verify all products belong to their stores
+    if (user.role === UserRole.RETAILER) {
+      const stores = await this.prisma.store.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      const userStoreIds = stores.map((s) => s.id);
+      const invalidProducts = products.filter((p) => !userStoreIds.includes(p.storeId));
+      
+      if (invalidProducts.length > 0) {
+        throw new ForbiddenException('You can only create promotions for products in your own stores');
+      }
+
+      // Check products per promotion limit for BASIC tier
+      if (user.subscriptionTier === SubscriptionTier.BASIC && productIds.length > 10) {
+        throw new ForbiddenException(
+          'BASIC tier allows a maximum of 10 products per promotion. Upgrade to PRO for unlimited products per promotion.',
+        );
+      }
     }
 
     // Create promotion with product relationships

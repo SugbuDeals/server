@@ -107,8 +107,12 @@ export class PromotionController {
     }
   })
   @Roles(UserRole.ADMIN, UserRole.RETAILER)
-  create(@Body() createPromotionDto: CreatePromotionDto) {
-    return this.promotionService.create(createPromotionDto);
+  create(
+    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @Body() createPromotionDto: CreatePromotionDto,
+  ) {
+    const requestingUser = req.user;
+    return this.promotionService.create(createPromotionDto, requestingUser.sub);
   }
 
   /**
