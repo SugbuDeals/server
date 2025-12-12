@@ -589,6 +589,18 @@ export class PromotionService {
         }
         break;
 
+      case DealType.VOUCHER:
+        if (
+          dto.voucherValue === undefined ||
+          dto.voucherValue === null ||
+          dto.voucherValue <= 0
+        ) {
+          throw new BadRequestException(
+            PROMOTION_ERRORS.VOUCHER_VALUE_NEGATIVE,
+          );
+        }
+        break;
+
       default:
         throw new BadRequestException(PROMOTION_ERRORS.INVALID_DEAL_TYPE);
     }
@@ -646,6 +658,12 @@ export class PromotionService {
           ...baseData,
           minQuantity: dto.minQuantity,
           quantityDiscount: dto.quantityDiscount,
+        };
+
+      case DealType.VOUCHER:
+        return {
+          ...baseData,
+          voucherValue: dto.voucherValue,
         };
 
       default:
@@ -745,6 +763,30 @@ export class PromotionService {
               });
           }
         }
+      } else if (
+        promotion.dealType === DealType.VOUCHER &&
+        promotion.voucherValue
+      ) {
+        // Check if voucher value is suspiciously high compared to product prices
+        const totalPrice = promotion.promotionProducts.reduce(
+          (sum: number, pp: any) => sum + Number(pp.product.price),
+          0,
+        );
+        const discount = (promotion.voucherValue / totalPrice) * 100;
+
+        if (discount > 80 || promotion.voucherValue <= 0) {
+          const storeId = promotion.promotionProducts[0]?.product?.storeId;
+          if (storeId) {
+            this.notificationService
+              .notifyAdminQuestionablePromotionPricing(promotion.id, storeId)
+              .catch((err: unknown) => {
+                this.logger.error(
+                  'Error creating questionable pricing notification:',
+                  err,
+                );
+              });
+          }
+        }
       }
     } catch (error) {
       this.logger.error('Error checking questionable pricing:', error);
@@ -822,6 +864,10 @@ export class PromotionService {
         }
         return unitPrice * quantity;
       }
+
+      case DealType.VOUCHER:
+        // Subtract voucher value from total price, but don't go below 0
+        return Math.max(0, unitPrice * quantity - (promotion.voucherValue || 0));
 
       default:
         return unitPrice * quantity;

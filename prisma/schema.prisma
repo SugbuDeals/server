@@ -41,6 +41,7 @@ enum DealType {
   BOGO
   BUNDLE
   QUANTITY_DISCOUNT
+  VOUCHER
 }
 
 model Store {
@@ -118,6 +119,9 @@ model Promotion {
   // QUANTITY_DISCOUNT fields
   minQuantity      Int?   // Minimum quantity to qualify
   quantityDiscount Float? // Discount % when min quantity met
+
+  // VOUCHER fields
+  voucherValue Float? // Fixed monetary value (e.g., $50 voucher)
 
   promotionProducts PromotionProduct[]
 }

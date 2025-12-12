@@ -78,7 +78,7 @@ export class PromotionController {
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Create a promotion',
-    description: `Creates a new promotion with one of five deal types: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, or QUANTITY_DISCOUNT. 
+    description: `Creates a new promotion with one of six deal types: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, QUANTITY_DISCOUNT, or VOUCHER. 
     
 Deal Types:
 - PERCENTAGE_DISCOUNT: Apply a percentage discount (requires percentageOff field, 0-100)
@@ -86,6 +86,7 @@ Deal Types:
 - BOGO: Buy X Get Y free (requires buyQuantity and getQuantity fields, both > 0)
 - BUNDLE: Buy multiple products for a fixed price (requires bundlePrice field and at least 2 products)
 - QUANTITY_DISCOUNT: Get discount when buying minimum quantity (requires minQuantity > 1 and quantityDiscount 0-100)
+- VOUCHER: Fixed monetary value like a gift card (requires voucherValue field, > 0)
 
 Restricted to retailers and admins. Automatically notifies bookmarks and checks for questionable pricing. 
 
@@ -155,6 +156,18 @@ TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 prod
           minQuantity: 3,
           quantityDiscount: 20,
           productIds: [11, 12],
+          active: true,
+        },
+      },
+      voucher: {
+        summary: 'Voucher',
+        description: 'Fixed monetary value like a gift card',
+        value: {
+          title: 'Holiday Gift Voucher',
+          dealType: 'VOUCHER',
+          description: '$50 gift voucher for any products',
+          voucherValue: 50,
+          productIds: [13, 14, 15],
           active: true,
         },
       },

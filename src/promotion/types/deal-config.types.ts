@@ -16,7 +16,8 @@ export type DealConfiguration =
   | FixedDiscountConfig
   | BogoDealConfig
   | BundleDealConfig
-  | QuantityDiscountConfig;
+  | QuantityDiscountConfig
+  | VoucherConfig;
 
 /**
  * Percentage Discount Configuration
@@ -114,6 +115,24 @@ export interface QuantityDiscountConfig {
 }
 
 /**
+ * Voucher Configuration
+ * 
+ * A fixed monetary value that can be applied to products (like a gift card).
+ * 
+ * @example
+ * ```typescript
+ * {
+ *   dealType: 'VOUCHER',
+ *   voucherValue: 50  // $50 voucher
+ * }
+ * ```
+ */
+export interface VoucherConfig {
+  dealType: 'VOUCHER';
+  voucherValue: number; // Fixed monetary value (must be > 0)
+}
+
+/**
  * Type guard to check if a config is a percentage discount
  */
 export function isPercentageDiscount(
@@ -156,5 +175,14 @@ export function isQuantityDiscount(
   config: DealConfiguration,
 ): config is QuantityDiscountConfig {
   return config.dealType === 'QUANTITY_DISCOUNT';
+}
+
+/**
+ * Type guard to check if a config is a voucher
+ */
+export function isVoucher(
+  config: DealConfiguration,
+): config is VoucherConfig {
+  return config.dealType === 'VOUCHER';
 }
 

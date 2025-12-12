@@ -55,6 +55,9 @@ export class IsDealConfigValidConstraint
         case DealType.QUANTITY_DISCOUNT:
           return this.validateQuantityDiscount(dto);
 
+        case DealType.VOUCHER:
+          return this.validateVoucher(dto);
+
         default:
           return false;
       }
@@ -143,6 +146,16 @@ export class IsDealConfigValidConstraint
   }
 
   /**
+   * Validates voucher configuration
+   */
+  private validateVoucher(dto: any): boolean {
+    if (dto.voucherValue === undefined || dto.voucherValue === null) {
+      return false;
+    }
+    return typeof dto.voucherValue === 'number' && dto.voucherValue > 0;
+  }
+
+  /**
    * Returns appropriate error message based on deal type
    */
   defaultMessage(args: ValidationArguments): string {
@@ -206,6 +219,15 @@ export class IsDealConfigValidConstraint
           return PROMOTION_ERRORS.QUANTITY_DISCOUNT_OUT_OF_RANGE;
         }
         return PROMOTION_ERRORS.INVALID_QUANTITY_DISCOUNT;
+
+      case DealType.VOUCHER:
+        if (dto.voucherValue === undefined || dto.voucherValue === null) {
+          return PROMOTION_ERRORS.MISSING_VOUCHER_VALUE;
+        }
+        if (dto.voucherValue <= 0) {
+          return PROMOTION_ERRORS.VOUCHER_VALUE_NEGATIVE;
+        }
+        return PROMOTION_ERRORS.INVALID_VOUCHER_VALUE;
 
       default:
         return PROMOTION_ERRORS.INVALID_DEAL_TYPE;

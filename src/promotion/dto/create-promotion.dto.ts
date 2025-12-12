@@ -226,6 +226,25 @@ export class CreatePromotionDto {
   quantityDiscount?: number;
 
   // ============================================
+  // VOUCHER fields
+  // ============================================
+
+  /**
+   * Voucher value
+   * Required for VOUCHER deal type
+   * Fixed monetary value like a gift card
+   */
+  @ApiPropertyOptional({
+    example: 50,
+    description:
+      'Fixed monetary value (e.g., $50 voucher). Required for VOUCHER deal type.',
+    minimum: 0,
+  })
+  @ValidateIf((o) => o.dealType === DealType.VOUCHER)
+  @IsNumber()
+  voucherValue?: number;
+
+  // ============================================
   // Product IDs (required for all deal types)
   // ============================================
 
