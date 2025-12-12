@@ -33,6 +33,10 @@ import { UserRole } from 'generated/prisma';
 import { SubscriptionTierGuard } from 'src/subscription/guards/subscription-tier.guard';
 import { TierLimit, TierLimitType } from 'src/subscription/decorators/tier-limit.decorator';
 import { AddProductsToPromotionDto } from './dto/add-products-to-promotion.dto';
+import { GenerateVoucherTokenDto } from './dto/generate-voucher-token.dto';
+import { VerifyVoucherDto } from './dto/verify-voucher.dto';
+import { ConfirmVoucherRedemptionDto } from './dto/confirm-voucher-redemption.dto';
+import { VoucherTokenResponseDto, VoucherVerificationResponseDto } from './dto/voucher-token-response.dto';
 import type { Request as ExpressRequest } from 'express';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
 
@@ -464,5 +468,127 @@ TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 prod
   @Roles(UserRole.ADMIN, UserRole.RETAILER)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.promotionService.remove(id);
+  }
+
+  /**
+   * Generates a voucher redemption token for a consumer.
+   * 
+   * The consumer selects a voucher promotion and generates a QR code token.
+   * This token contains the consumer's information and can be scanned by the retailer.
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param generateVoucherDto - Voucher generation data (promotion ID, store ID, optional product ID)
+   * @returns Voucher token response with JWT token and consumer info
+   */
+  @Post('voucher/generate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Generate voucher redemption token (Consumer)',
+    description: 'Consumer generates a one-time use voucher token for a specific promotion at a store. This token can be encoded into a QR code for the retailer to scan. Restricted to consumers.',
+  })
+  @ApiBody({ type: GenerateVoucherTokenDto })
+  @ApiCreatedResponse({
+    description: 'Voucher token generated successfully',
+    type: VoucherTokenResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({ description: 'Forbidden - Only consumers can generate voucher tokens' })
+  @ApiBadRequestResponse({
+    description: 'Invalid input - Promotion not found, not a voucher type, or already redeemed',
+  })
+  @Roles(UserRole.CONSUMER)
+  generateVoucherToken(
+    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @Body() generateVoucherDto: GenerateVoucherTokenDto,
+  ): Promise<VoucherTokenResponseDto> {
+    const requestingUser = req.user;
+    return this.promotionService.generateVoucherToken(
+      requestingUser.sub,
+      generateVoucherDto,
+    );
+  }
+
+  /**
+   * Verifies a voucher redemption token.
+   * 
+   * Retailer scans the consumer's QR code and verifies the voucher.
+   * Returns consumer information including name, subscription tier, and qualification status.
+   * Updates the voucher status to VERIFIED.
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param verifyVoucherDto - DTO containing the voucher token to verify
+   * @returns Verification response with consumer information and voucher details
+   */
+  @Post('voucher/verify')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Verify voucher redemption token (Retailer)',
+    description: 'Retailer scans and verifies the consumer\'s voucher QR code. Returns consumer information and marks voucher as verified. Restricted to retailers and admins.',
+  })
+  @ApiBody({ type: VerifyVoucherDto })
+  @ApiCreatedResponse({
+    description: 'Voucher verified successfully',
+    type: VoucherVerificationResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token, or invalid voucher token' })
+  @ApiForbiddenResponse({ description: 'Forbidden - Only retailers can verify vouchers, or store ownership mismatch' })
+  @ApiBadRequestResponse({ description: 'Invalid voucher token or redemption not found' })
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
+  verifyVoucherToken(
+    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @Body() verifyVoucherDto: VerifyVoucherDto,
+  ): Promise<VoucherVerificationResponseDto> {
+    const requestingUser = req.user;
+    return this.promotionService.verifyVoucherToken(
+      verifyVoucherDto.token,
+      requestingUser.sub,
+    );
+  }
+
+  /**
+   * Confirms voucher redemption.
+   * 
+   * After verifying the consumer's qualification, retailer clicks confirm to redeem the voucher.
+   * This marks the voucher as REDEEMED and it cannot be used again.
+   * 
+   * @param req - Request object containing authenticated user information
+   * @param confirmDto - DTO containing the voucher token to confirm
+   * @returns Success message with redemption ID
+   */
+  @Post('voucher/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Confirm voucher redemption (Retailer)',
+    description: 'Retailer confirms the voucher redemption after verification. Marks the voucher as redeemed and it becomes unusable. Voucher must be verified first. Restricted to retailers and admins.',
+  })
+  @ApiBody({ type: ConfirmVoucherRedemptionDto })
+  @ApiCreatedResponse({
+    description: 'Voucher redeemed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Voucher redeemed successfully' },
+        redemptionId: { type: 'number', example: 1 },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token, or invalid voucher token' })
+  @ApiForbiddenResponse({
+    description: 'Forbidden - Only retailers can confirm redemptions, voucher not verified, or store ownership mismatch',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid voucher token, redemption not found, or already redeemed' })
+  @Roles(UserRole.ADMIN, UserRole.RETAILER)
+  confirmVoucherRedemption(
+    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @Body() confirmDto: ConfirmVoucherRedemptionDto,
+  ): Promise<{ message: string; redemptionId: number }> {
+    const requestingUser = req.user;
+    return this.promotionService.confirmVoucherRedemption(
+      confirmDto.token,
+      requestingUser.sub,
+    );
   }
 }

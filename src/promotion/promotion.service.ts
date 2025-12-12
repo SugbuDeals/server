@@ -3,17 +3,21 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { AddProductsToPromotionDto } from './dto/add-products-to-promotion.dto';
+import { GenerateVoucherTokenDto } from './dto/generate-voucher-token.dto';
+import { VoucherTokenResponseDto, VoucherVerificationResponseDto } from './dto/voucher-token-response.dto';
 import { NotificationService } from '../notification/notification.service';
 import {
   isQuestionablePromotionDiscount,
 } from 'src/notification/utils/pricing-validation.util';
-import { SubscriptionTier, UserRole, DealType, Prisma } from 'generated/prisma';
+import { SubscriptionTier, UserRole, DealType, Prisma, VoucherRedemptionStatus } from 'generated/prisma';
 import { PROMOTION_ERRORS } from './constants/error-messages';
+import { JwtService } from '@nestjs/jwt';
 
 /**
  * Promotion Service
@@ -49,6 +53,7 @@ export class PromotionService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private jwtService: JwtService,
   ) {}
 
   /**
@@ -872,5 +877,410 @@ export class PromotionService {
       default:
         return unitPrice * quantity;
     }
+  }
+
+  /**
+   * Generates a voucher redemption token for a consumer.
+   * Creates a PENDING redemption record and returns a JWT token with consumer info.
+   * 
+   * @param userId - Consumer user ID
+   * @param dto - Voucher token generation data
+   * @returns Promise resolving to voucher token response
+   * @throws {BadRequestException} If promotion not found, not a voucher, or already redeemed
+   * 
+   * @example
+   * ```typescript
+   * const tokenData = await promotionService.generateVoucherToken(123, {
+   *   promotionId: 1,
+   *   storeId: 5,
+   *   productId: 10
+   * });
+   * ```
+   */
+  async generateVoucherToken(
+    userId: number,
+    dto: GenerateVoucherTokenDto,
+  ): Promise<VoucherTokenResponseDto> {
+    // Verify promotion exists and is a voucher type
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { id: dto.promotionId },
+      include: {
+        promotionProducts: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                storeId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!promotion) {
+      throw new BadRequestException('Promotion not found');
+    }
+
+    if (promotion.dealType !== DealType.VOUCHER) {
+      throw new BadRequestException('This promotion is not a voucher type');
+    }
+
+    // Verify store exists and matches the promotion
+    const store = await this.prisma.store.findUnique({
+      where: { id: dto.storeId },
+    });
+
+    if (!store) {
+      throw new BadRequestException('Store not found');
+    }
+
+    // If productId provided, verify it's in the promotion
+    if (dto.productId) {
+      const productInPromotion = promotion.promotionProducts.some(
+        (pp) => pp.productId === dto.productId,
+      );
+
+      if (!productInPromotion) {
+        throw new BadRequestException('Product not found in this promotion');
+      }
+    }
+
+    // Check if user already has a redemption for this voucher at this store
+    const existingRedemption = await this.prisma.voucherRedemption.findUnique({
+      where: {
+        userId_promotionId_storeId: {
+          userId,
+          promotionId: dto.promotionId,
+          storeId: dto.storeId,
+        },
+      },
+    });
+
+    if (existingRedemption) {
+      if (existingRedemption.status === VoucherRedemptionStatus.REDEEMED) {
+        throw new BadRequestException('Voucher already redeemed at this store');
+      }
+      // If PENDING or VERIFIED, delete and create new one
+      await this.prisma.voucherRedemption.delete({
+        where: { id: existingRedemption.id },
+      });
+    }
+
+    // Get user info
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Create voucher redemption record
+    const redemption = await this.prisma.voucherRedemption.create({
+      data: {
+        userId,
+        promotionId: dto.promotionId,
+        storeId: dto.storeId,
+        productId: dto.productId,
+        status: VoucherRedemptionStatus.PENDING,
+      },
+    });
+
+    // Generate JWT token with redemption info
+    const payload = {
+      redemptionId: redemption.id,
+      userId: user.id,
+      userName: user.name,
+      promotionId: dto.promotionId,
+      storeId: dto.storeId,
+      productId: dto.productId,
+    };
+
+    const token = this.jwtService.sign(payload, {
+      expiresIn: '1h', // Token valid for 1 hour
+    });
+
+    return {
+      token,
+      userId: user.id,
+      userName: user.name,
+      redemptionId: redemption.id,
+      promotionId: dto.promotionId,
+      storeId: dto.storeId,
+      productId: dto.productId,
+      status: VoucherRedemptionStatus.PENDING,
+    };
+  }
+
+  /**
+   * Verifies a voucher redemption token.
+   * Validates the token and returns consumer information for retailer to review.
+   * Updates redemption status to VERIFIED if valid.
+   * 
+   * @param token - JWT token from consumer's QR code
+   * @param retailerId - Retailer user ID performing verification
+   * @returns Promise resolving to verification response with consumer info
+   * @throws {UnauthorizedException} If token is invalid or expired
+   * @throws {BadRequestException} If redemption not found or already redeemed
+   * @throws {ForbiddenException} If retailer doesn't own the store
+   * 
+   * @example
+   * ```typescript
+   * const verification = await promotionService.verifyVoucherToken(
+   *   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+   *   retailerId
+   * );
+   * ```
+   */
+  async verifyVoucherToken(
+    token: string,
+    retailerId: number,
+  ): Promise<VoucherVerificationResponseDto> {
+    try {
+      // Decode and verify JWT token
+      const payload = this.jwtService.verify(token);
+
+      const {
+        redemptionId,
+        userId,
+        userName,
+        promotionId,
+        storeId,
+        productId,
+      } = payload;
+
+      // Verify retailer owns the store
+      const store = await this.prisma.store.findFirst({
+        where: {
+          id: storeId,
+          ownerId: retailerId,
+        },
+      });
+
+      if (!store) {
+        throw new ForbiddenException(
+          'You do not have permission to verify vouchers for this store',
+        );
+      }
+
+      // Get redemption record
+      const redemption = await this.prisma.voucherRedemption.findUnique({
+        where: { id: redemptionId },
+      });
+
+      if (!redemption) {
+        return {
+          valid: false,
+          userId,
+          userName,
+          subscriptionTier: 'UNKNOWN',
+          redemptionId,
+          promotionTitle: 'Unknown',
+          voucherValue: 0,
+          storeId,
+          productId,
+          status: VoucherRedemptionStatus.CANCELLED,
+          message: 'Redemption record not found',
+        };
+      }
+
+      // Check if already redeemed
+      if (redemption.status === VoucherRedemptionStatus.REDEEMED) {
+        const promotion = await this.prisma.promotion.findUnique({
+          where: { id: promotionId },
+        });
+
+        return {
+          valid: false,
+          userId,
+          userName,
+          subscriptionTier: 'UNKNOWN',
+          redemptionId,
+          promotionTitle: promotion?.title || 'Unknown',
+          voucherValue: Number(promotion?.voucherValue || 0),
+          storeId,
+          productId,
+          status: VoucherRedemptionStatus.REDEEMED,
+          message: 'Voucher already redeemed',
+        };
+      }
+
+      // Get user and promotion info
+      const [user, promotion] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            name: true,
+            subscriptionTier: true,
+          },
+        }),
+        this.prisma.promotion.findUnique({
+          where: { id: promotionId },
+        }),
+      ]);
+
+      if (!user || !promotion) {
+        return {
+          valid: false,
+          userId,
+          userName,
+          subscriptionTier: 'UNKNOWN',
+          redemptionId,
+          promotionTitle: 'Unknown',
+          voucherValue: 0,
+          storeId,
+          productId,
+          status: VoucherRedemptionStatus.CANCELLED,
+          message: 'User or promotion not found',
+        };
+      }
+
+      // Update redemption status to VERIFIED
+      await this.prisma.voucherRedemption.update({
+        where: { id: redemptionId },
+        data: { status: VoucherRedemptionStatus.VERIFIED },
+      });
+
+      return {
+        valid: true,
+        userId: user.id,
+        userName: user.name,
+        subscriptionTier: user.subscriptionTier,
+        redemptionId,
+        promotionTitle: promotion.title,
+        voucherValue: Number(promotion.voucherValue || 0),
+        storeId,
+        productId,
+        status: VoucherRedemptionStatus.VERIFIED,
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid or expired voucher token');
+    }
+  }
+
+  /**
+   * Confirms voucher redemption by retailer.
+   * Marks the voucher as REDEEMED, making it unusable for future redemptions.
+   * 
+   * @param token - JWT token from consumer's QR code
+   * @param retailerId - Retailer user ID performing confirmation
+   * @returns Promise resolving to success message
+   * @throws {UnauthorizedException} If token is invalid
+   * @throws {BadRequestException} If redemption not found or already redeemed
+   * @throws {ForbiddenException} If retailer doesn't own the store or redemption not verified
+   * 
+   * @example
+   * ```typescript
+   * await promotionService.confirmVoucherRedemption(
+   *   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+   *   retailerId
+   * );
+   * ```
+   */
+  async confirmVoucherRedemption(
+    token: string,
+    retailerId: number,
+  ): Promise<{ message: string; redemptionId: number }> {
+    try {
+      // Decode and verify JWT token
+      const payload = this.jwtService.verify(token);
+
+      const { redemptionId, storeId } = payload;
+
+      // Verify retailer owns the store
+      const store = await this.prisma.store.findFirst({
+        where: {
+          id: storeId,
+          ownerId: retailerId,
+        },
+      });
+
+      if (!store) {
+        throw new ForbiddenException(
+          'You do not have permission to confirm redemptions for this store',
+        );
+      }
+
+      // Get redemption record
+      const redemption = await this.prisma.voucherRedemption.findUnique({
+        where: { id: redemptionId },
+      });
+
+      if (!redemption) {
+        throw new BadRequestException('Redemption record not found');
+      }
+
+      // Check if already redeemed
+      if (redemption.status === VoucherRedemptionStatus.REDEEMED) {
+        throw new BadRequestException('Voucher already redeemed');
+      }
+
+      // Must be verified first
+      if (redemption.status !== VoucherRedemptionStatus.VERIFIED) {
+        throw new ForbiddenException(
+          'Voucher must be verified before confirmation',
+        );
+      }
+
+      // Update redemption status to REDEEMED
+      await this.prisma.voucherRedemption.update({
+        where: { id: redemptionId },
+        data: {
+          status: VoucherRedemptionStatus.REDEEMED,
+          redeemedAt: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `Voucher redemption ${redemptionId} confirmed by retailer ${retailerId}`,
+      );
+
+      return {
+        message: 'Voucher redeemed successfully',
+        redemptionId,
+      };
+    } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid or expired voucher token');
+    }
+  }
+
+  /**
+   * Gets voucher redemption status for a consumer.
+   * 
+   * @param userId - Consumer user ID
+   * @param promotionId - Promotion ID
+   * @param storeId - Store ID
+   * @returns Promise resolving to redemption status or null if not found
+   */
+  async getVoucherRedemptionStatus(
+    userId: number,
+    promotionId: number,
+    storeId: number,
+  ) {
+    return this.prisma.voucherRedemption.findUnique({
+      where: {
+        userId_promotionId_storeId: {
+          userId,
+          promotionId,
+          storeId,
+        },
+      },
+    });
   }
 }

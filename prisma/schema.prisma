@@ -222,3 +222,27 @@ enum NotificationType {
   QUESTIONABLE_PRICING_PRODUCT
   QUESTIONABLE_PRICING_PROMOTION
 }
+
+model VoucherRedemption {
+  id          Int                     @id @default(autoincrement())
+  userId      Int                     // Consumer who is redeeming
+  promotionId Int                     // The voucher promotion
+  storeId     Int                     // Store where redemption happens
+  productId   Int?                    // Optional: specific product being redeemed
+  status      VoucherRedemptionStatus @default(PENDING)
+  createdAt   DateTime                @default(now()) // When consumer generated QR
+  redeemedAt  DateTime?               // When retailer confirmed redemption
+
+  @@unique([userId, promotionId, storeId]) // One redemption per user per voucher per store
+  @@index([userId])
+  @@index([promotionId])
+  @@index([storeId])
+  @@index([status])
+}
+
+enum VoucherRedemptionStatus {
+  PENDING   // QR generated, waiting for retailer scan
+  VERIFIED  // Retailer scanned and verified consumer
+  REDEEMED  // Retailer confirmed, voucher consumed
+  CANCELLED // Consumer cancelled or expired
+}
