@@ -28,7 +28,7 @@ export class PromotionResponseDto {
     enum: DealType,
     example: DealType.PERCENTAGE_DISCOUNT,
     description:
-      'Type of deal: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, or QUANTITY_DISCOUNT',
+      'Type of deal: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, QUANTITY_DISCOUNT, or VOUCHER',
   })
   dealType: DealType;
 
@@ -163,5 +163,18 @@ export class PromotionResponseDto {
     nullable: true,
   })
   quantityDiscount?: number | null;
+
+  /**
+   * Voucher value (VOUCHER only)
+   * Only populated when dealType is VOUCHER
+   */
+  @ApiPropertyOptional({
+    example: 50,
+    description:
+      'Fixed monetary value like a gift card. Only populated for VOUCHER deals.',
+    type: Number,
+    nullable: true,
+  })
+  voucherValue?: number | null;
 }
 

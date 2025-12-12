@@ -67,6 +67,11 @@ export const PROMOTION_ERRORS = {
   QUANTITY_DISCOUNT_OUT_OF_RANGE:
     'quantityDiscount must be greater than 0 and less than or equal to 100',
 
+  // Voucher errors
+  INVALID_VOUCHER_VALUE: 'Voucher value must be greater than 0',
+  MISSING_VOUCHER_VALUE: 'voucherValue is required for VOUCHER deal type',
+  VOUCHER_VALUE_NEGATIVE: 'voucherValue must be greater than 0',
+
   // Tier limit errors
   TIER_LIMIT_PROMOTIONS:
     'BASIC tier allows a maximum of 5 promotions. Upgrade to PRO for unlimited promotions.',
