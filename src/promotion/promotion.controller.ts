@@ -52,7 +52,14 @@ export class PromotionController {
   constructor(private readonly promotionService: PromotionService) {}
 
   /**
-   * Creates a new promotion with multiple products.
+   * Creates a new promotion with multiple products and specified deal type.
+   * 
+   * Supports five deal types:
+   * 1. PERCENTAGE_DISCOUNT - Apply percentage off (e.g., 25% off)
+   * 2. FIXED_DISCOUNT - Apply fixed amount off (e.g., $10 off)
+   * 3. BOGO - Buy X Get Y free deals
+   * 4. BUNDLE - Buy multiple products for a fixed price
+   * 5. QUANTITY_DISCOUNT - Get discount when buying minimum quantity
    * 
    * After creation, automatically notifies users who bookmarked the products/stores
    * and checks for questionable discount pricing.
@@ -62,25 +69,107 @@ export class PromotionController {
    * - PRO: Unlimited promotions and products per promotion
    * 
    * @param req - Request object containing authenticated user information
-   * @param createPromotionDto - Promotion creation data with product IDs
+   * @param createPromotionDto - Promotion creation data with deal type and product IDs
    * @returns Created promotion object
    */
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard, SubscriptionTierGuard)
   @TierLimit(TierLimitType.RETAILER_PROMOTION_COUNT)
   @ApiBearerAuth('bearer')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Create a promotion',
-    description: 'Creates a new promotion for multiple products. Restricted to retailers and admins. Automatically notifies bookmarks and checks for questionable pricing. TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 products per promotion, PRO tier allows unlimited.',
+    description: `Creates a new promotion with one of five deal types: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, or QUANTITY_DISCOUNT. 
+    
+Deal Types:
+- PERCENTAGE_DISCOUNT: Apply a percentage discount (requires percentageOff field, 0-100)
+- FIXED_DISCOUNT: Apply a fixed amount discount (requires fixedAmountOff field, > 0)
+- BOGO: Buy X Get Y free (requires buyQuantity and getQuantity fields, both > 0)
+- BUNDLE: Buy multiple products for a fixed price (requires bundlePrice field and at least 2 products)
+- QUANTITY_DISCOUNT: Get discount when buying minimum quantity (requires minQuantity > 1 and quantityDiscount 0-100)
+
+Restricted to retailers and admins. Automatically notifies bookmarks and checks for questionable pricing. 
+
+TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 products per promotion, PRO tier allows unlimited.`,
   })
-  @ApiBody({ type: CreatePromotionDto })
-  @ApiCreatedResponse({ 
+  @ApiBody({
+    type: CreatePromotionDto,
+    examples: {
+      percentageDiscount: {
+        summary: 'Percentage Discount',
+        description: '25% off on selected products',
+        value: {
+          title: 'Summer Sale',
+          dealType: 'PERCENTAGE_DISCOUNT',
+          description: '25% off on all summer items',
+          percentageOff: 25,
+          productIds: [1, 2, 3],
+          startsAt: '2025-06-01T00:00:00.000Z',
+          endsAt: '2025-08-31T23:59:59.000Z',
+          active: true,
+        },
+      },
+      fixedDiscount: {
+        summary: 'Fixed Amount Discount',
+        description: '$10 off on products',
+        value: {
+          title: 'Holiday Deal',
+          dealType: 'FIXED_DISCOUNT',
+          description: 'Get $10 off',
+          fixedAmountOff: 10,
+          productIds: [4, 5],
+          active: true,
+        },
+      },
+      bogo: {
+        summary: 'Buy 1 Get 1 Free',
+        description: 'BOGO deal on products',
+        value: {
+          title: 'BOGO Special',
+          dealType: 'BOGO',
+          description: 'Buy 1 get 1 free',
+          buyQuantity: 1,
+          getQuantity: 1,
+          productIds: [6, 7],
+          active: true,
+        },
+      },
+      bundle: {
+        summary: 'Bundle Deal',
+        description: 'Buy products together for a fixed price',
+        value: {
+          title: 'Combo Meal',
+          dealType: 'BUNDLE',
+          description: 'Get all three products for just $50',
+          bundlePrice: 50,
+          productIds: [8, 9, 10],
+          active: true,
+        },
+      },
+      quantityDiscount: {
+        summary: 'Quantity Discount',
+        description: 'Get discount when buying 3 or more',
+        value: {
+          title: 'Bulk Buy Discount',
+          dealType: 'QUANTITY_DISCOUNT',
+          description: 'Buy 3 or more and get 20% off',
+          minQuantity: 3,
+          quantityDiscount: 20,
+          productIds: [11, 12],
+          active: true,
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({
     description: 'Promotion created successfully',
-    type: PromotionResponseDto
+    type: PromotionResponseDto,
   })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
-  @ApiForbiddenResponse({ 
-    description: 'Forbidden - Only retailers and admins can create promotions, or tier limit exceeded',
+  @ApiUnauthorizedResponse({
+    description: 'Unauthorized - Invalid or missing JWT token',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Forbidden - Only retailers and admins can create promotions, or tier limit exceeded',
     schema: {
       type: 'object',
       properties: {
@@ -93,26 +182,42 @@ export class PromotionController {
             'BASIC tier allows a maximum of 10 products per promotion. Upgrade to PRO for unlimited products per promotion.',
           ],
         },
-      }
-    }
+      },
+    },
   })
-  @ApiBadRequestResponse({ 
+  @ApiBadRequestResponse({
     description: 'Invalid input or validation error',
     schema: {
       type: 'object',
       properties: {
         statusCode: { type: 'number', example: 400 },
-        message: { type: 'array', items: { type: 'string' } }
-      }
-    }
+        message: {
+          type: 'array',
+          items: {
+            type: 'string',
+            examples: [
+              'Percentage discount must be between 0 and 100',
+              'Fixed discount amount must be greater than 0',
+              'BOGO deal requires buyQuantity and getQuantity greater than 0',
+              'Bundle deals require at least 2 products',
+              'Quantity discount requires minQuantity > 1 and valid discount percentage',
+            ],
+          },
+        },
+      },
+    },
   })
   @Roles(UserRole.ADMIN, UserRole.RETAILER)
   create(
-    @RequestDecorator() req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
+    @RequestDecorator()
+    req: ExpressRequest & { user: Omit<PayloadDTO, 'password'> },
     @Body() createPromotionDto: CreatePromotionDto,
   ) {
     const requestingUser = req.user;
-    return this.promotionService.create(createPromotionDto, requestingUser.sub);
+    return this.promotionService.create(
+      createPromotionDto,
+      requestingUser.sub,
+    );
   }
 
   /**

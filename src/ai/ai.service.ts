@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Groq } from 'groq-sdk';
 import { ProductService } from '../product/product.service';
 import { PromotionService } from '../promotion/promotion.service';
-import { Product, Store, Promotion, SubscriptionTier, UserRole } from 'generated/prisma';
+import { Product, Store, Promotion, SubscriptionTier, UserRole, DealType } from 'generated/prisma';
 import { StoreService } from '../store/store.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { toolSchemas } from './types/tool-schemas.types';
@@ -532,11 +532,11 @@ RESPONSE STYLE:
         .map((promo) => ({
           id: promo.id,
           title: promo.title,
-          type: promo.type,
+          dealType: promo.dealType,
           description: promo.description,
           startsAt: promo.startsAt,
           endsAt: promo.endsAt,
-          discount: promo.discount,
+          dealDetails: this.formatDealDetails(promo),
           productCount: promo.promotionProducts.length,
         }));
     }
@@ -1096,7 +1096,7 @@ RESPONSE STYLE:
           if (!item.isVerified) {
             return false;
           }
-          const searchText = `${item.promo.title} ${item.promo.description} ${item.promo.type}`.toLowerCase();
+          const searchText = `${item.promo.title} ${item.promo.description} ${item.promo.dealType}`.toLowerCase();
           const keywords = query.split(/\s+/);
           return keywords.some((keyword) => searchText.includes(keyword));
         });
@@ -1696,16 +1696,40 @@ RESPONSE STYLE:
         .map((promo) => ({
           id: promo.id,
           title: promo.title,
-          type: promo.type,
+          dealType: promo.dealType,
           description: promo.description,
           startsAt: promo.startsAt,
           endsAt: promo.endsAt,
-          discount: promo.discount,
+          dealDetails: this.formatDealDetails(promo),
           productCount: promo.promotionProducts.length,
         }));
     }
 
     return response;
+  }
+
+  /**
+   * Formats deal details based on deal type for AI responses.
+   * 
+   * @param promotion - Promotion object with dealType and deal-specific fields
+   * @returns Formatted string describing the deal details
+   * @private
+   */
+  private formatDealDetails(promotion: any): string {
+    switch (promotion.dealType) {
+      case 'PERCENTAGE_DISCOUNT':
+        return `${promotion.percentageOff}% off`;
+      case 'FIXED_DISCOUNT':
+        return `${promotion.fixedAmountOff} PHP off`;
+      case 'BOGO':
+        return `Buy ${promotion.buyQuantity} Get ${promotion.getQuantity} free`;
+      case 'BUNDLE':
+        return `Bundle for ${promotion.bundlePrice} PHP`;
+      case 'QUANTITY_DISCOUNT':
+        return `Buy ${promotion.minQuantity}+ and get ${promotion.quantityDiscount}% off`;
+      default:
+        return 'Special offer';
+    }
   }
 
   /**
