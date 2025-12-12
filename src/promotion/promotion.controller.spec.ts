@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PromotionController } from './promotion.controller';
 import { PromotionService } from './promotion.service';
+import { DealType } from 'generated/prisma';
 
 describe('PromotionController', () => {
   let controller: PromotionController;
@@ -41,27 +42,34 @@ describe('PromotionController', () => {
     it('should create a promotion with multiple products', async () => {
       const createPromotionDto = {
         title: 'Summer Sale',
-        type: 'percentage',
+        dealType: DealType.PERCENTAGE_DISCOUNT,
         description: '25% off',
-        discount: 25,
+        percentageOff: 25,
         productIds: [1, 2, 3],
       };
 
       const mockPromotion = {
         id: 1,
         title: 'Summer Sale',
-        type: 'percentage',
+        dealType: DealType.PERCENTAGE_DISCOUNT,
         description: '25% off',
         startsAt: new Date(),
         endsAt: null,
         active: true,
-        discount: 25,
+        percentageOff: 25,
+        fixedAmountOff: null,
+        buyQuantity: null,
+        getQuantity: null,
+        bundlePrice: null,
+        minQuantity: null,
+        quantityDiscount: null,
         promotionProducts: [
           {
             id: 1,
             promotionId: 1,
             productId: 1,
             createdAt: new Date(),
+            productRole: 'default',
             product: {
               id: 1,
               name: 'Product 1',
@@ -74,6 +82,7 @@ describe('PromotionController', () => {
             promotionId: 1,
             productId: 2,
             createdAt: new Date(),
+            productRole: 'default',
             product: {
               id: 2,
               name: 'Product 2',
@@ -84,13 +93,23 @@ describe('PromotionController', () => {
         ],
       };
 
+      const mockRequest = {
+        user: {
+          sub: 1,
+          email: 'test@example.com',
+          name: 'Test User',
+          role: 'RETAILER',
+        },
+      };
+
       mockPromotionService.create.mockResolvedValue(mockPromotion);
 
-      const result = await controller.create(createPromotionDto);
+      const result = await controller.create(mockRequest as any, createPromotionDto as any);
 
       expect(result).toEqual(mockPromotion);
       expect(mockPromotionService.create).toHaveBeenCalledWith(
         createPromotionDto,
+        1,
       );
     });
   });

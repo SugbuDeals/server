@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RecommendationType } from './recommendation.dto';
+import { DealType } from 'generated/prisma';
 
 /**
  * Product Recommendation Item DTO
@@ -107,7 +108,7 @@ export class StoreRecommendationItemDto {
 /**
  * Promotion Recommendation Item DTO
  * 
- * Represents a single promotion recommendation.
+ * Represents a single promotion recommendation with support for multiple deal types.
  */
 export class PromotionRecommendationItemDto {
   @ApiProperty({ example: 1, description: 'Promotion ID' })
@@ -116,8 +117,12 @@ export class PromotionRecommendationItemDto {
   @ApiProperty({ example: 'Summer Sale', description: 'Promotion title' })
   title: string;
 
-  @ApiProperty({ example: 'PERCENTAGE', description: 'Promotion type' })
-  type: string;
+  @ApiProperty({ 
+    enum: DealType,
+    example: DealType.PERCENTAGE_DISCOUNT, 
+    description: 'Deal type: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, or QUANTITY_DISCOUNT' 
+  })
+  dealType: DealType;
 
   @ApiProperty({ example: 'Get 20% off on all products', description: 'Promotion description' })
   description: string;
@@ -139,8 +144,12 @@ export class PromotionRecommendationItemDto {
   })
   endsAt: Date | null;
 
-  @ApiProperty({ example: 20.0, description: 'Discount amount', type: Number })
-  discount: number;
+  @ApiProperty({ 
+    example: '25% off', 
+    description: 'Formatted deal details based on deal type (e.g., "25% off", "Buy 1 Get 1 free", "Bundle for 50 PHP")',
+    type: String
+  })
+  dealDetails: string;
 
   @ApiProperty({ 
     example: 3, 

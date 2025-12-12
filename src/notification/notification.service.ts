@@ -5,6 +5,7 @@ import {
   NotificationType,
   Prisma,
   UserRole,
+  DealType,
 } from 'generated/prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
@@ -31,6 +32,30 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 @Injectable()
 export class NotificationService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Formats a promotion message based on deal type
+   * 
+   * @param promotion - Promotion object with dealType and deal-specific fields
+   * @returns Formatted message string describing the promotion
+   * @private
+   */
+  private formatPromotionMessage(promotion: any): string {
+    switch (promotion.dealType) {
+      case DealType.PERCENTAGE_DISCOUNT:
+        return `${promotion.description} - ${promotion.percentageOff}% off!`;
+      case DealType.FIXED_DISCOUNT:
+        return `${promotion.description} - ${promotion.fixedAmountOff} PHP off!`;
+      case DealType.BOGO:
+        return `${promotion.description} - Buy ${promotion.buyQuantity} Get ${promotion.getQuantity} free!`;
+      case DealType.BUNDLE:
+        return `${promotion.description} - Bundle for ${promotion.bundlePrice} PHP!`;
+      case DealType.QUANTITY_DISCOUNT:
+        return `${promotion.description} - Buy ${promotion.minQuantity}+ and get ${promotion.quantityDiscount}% off!`;
+      default:
+        return promotion.description;
+    }
+  }
 
   /**
    * Creates a single notification for a user.
@@ -365,7 +390,7 @@ export class NotificationService {
         userIds,
         NotificationType.PROMOTION_CREATED,
         `New promotion: ${promotion.title}`,
-        `${promotion.description} - ${promotion.discount}% off!`,
+        this.formatPromotionMessage(promotion),
         {
           promotionId,
           productId: productId || undefined,
@@ -567,7 +592,7 @@ export class NotificationService {
       userId,
       type: NotificationType.PROMOTION_NEARBY,
       title: 'Promotion Nearby!',
-      message: `${promotion.title} - ${promotion.discount}% off! Check it out!`,
+      message: `${promotion.title} - ${this.formatPromotionMessage(promotion)} Check it out!`,
       promotionId,
       storeId,
     });

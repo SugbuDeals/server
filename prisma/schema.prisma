@@ -35,6 +35,14 @@ enum SubscriptionTier {
   PRO
 }
 
+enum DealType {
+  PERCENTAGE_DISCOUNT
+  FIXED_DISCOUNT
+  BOGO
+  BUNDLE
+  QUANTITY_DISCOUNT
+}
+
 model Store {
   id                 Int                     @id @default(autoincrement())
   name               String
@@ -88,12 +96,28 @@ model Product {
 model Promotion {
   id          Int       @id @default(autoincrement())
   title       String
-  type        String
+  dealType    DealType
   description String
   startsAt    DateTime  @default(now())
   endsAt      DateTime?
   active      Boolean   @default(true)
-  discount    Float     @default(0)
+
+  // PERCENTAGE_DISCOUNT fields
+  percentageOff Float? // e.g., 25.0 for 25% off
+
+  // FIXED_DISCOUNT fields
+  fixedAmountOff Float? // e.g., 10.0 for $10 off
+
+  // BOGO fields
+  buyQuantity Int? // Buy X items
+  getQuantity Int? // Get Y items free
+
+  // BUNDLE fields
+  bundlePrice Float? // Fixed price for bundle
+
+  // QUANTITY_DISCOUNT fields
+  minQuantity      Int?   // Minimum quantity to qualify
+  quantityDiscount Float? // Discount % when min quantity met
 
   promotionProducts PromotionProduct[]
 }
@@ -103,6 +127,9 @@ model PromotionProduct {
   promotionId Int
   productId   Int
   createdAt   DateTime @default(now())
+
+  // BOGO specific: mark if product is "buy" or "get" item
+  productRole String? @default("default") // "buy", "get", or "default"
 
   promotion Promotion @relation(fields: [promotionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   product   Product   @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
