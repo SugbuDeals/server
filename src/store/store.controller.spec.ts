@@ -19,6 +19,8 @@ describe('StoreController', () => {
     update: jest.fn(),
     delete: jest.fn(),
     findStoresNearby: jest.fn(),
+    getStoreWithProductsAndPromotions: jest.fn(),
+    findNearbyWithPromotions: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -160,6 +162,141 @@ describe('StoreController', () => {
 
       expect(mockStoreService.delete).toHaveBeenCalled();
       expect(result).toEqual(deletedStore);
+    });
+  });
+
+  describe('GET /store/:id/full', () => {
+    it('should return store with products and promotions', async () => {
+      const mockStoreWithDetails = {
+        id: 1,
+        name: 'Electronics Store',
+        description: 'Best electronics',
+        products: [
+          {
+            id: 1,
+            name: 'iPhone 15',
+            price: '999.99',
+            promotions: [
+              {
+                id: 1,
+                title: 'Black Friday',
+                dealType: 'PERCENTAGE_DISCOUNT',
+                percentageOff: 20,
+                active: true,
+              },
+            ],
+          },
+        ],
+      };
+
+      mockStoreService.getStoreWithProductsAndPromotions.mockResolvedValue(
+        mockStoreWithDetails,
+      );
+
+      const result = await controller.getStoreWithProductsAndPromotions(
+        '1',
+        'true',
+        'true',
+        'true',
+      );
+
+      expect(mockStoreService.getStoreWithProductsAndPromotions).toHaveBeenCalledWith(
+        1,
+        {
+          includeProducts: true,
+          includePromotions: true,
+          onlyActivePromotions: true,
+        },
+      );
+      expect(result).toHaveProperty('products');
+      expect(Array.isArray(result.products)).toBe(true);
+    });
+
+    it('should throw BadRequestException for invalid store id', async () => {
+      await expect(
+        controller.getStoreWithProductsAndPromotions('invalid', 'true', 'true', 'true'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('GET /store/nearby-with-promotions', () => {
+    it('should return nearby stores with promotions', async () => {
+      const mockResult = {
+        stores: [
+          {
+            id: 1,
+            name: 'Electronics Store',
+            distance: 2.5,
+            latitude: 10.3157,
+            longitude: 123.8854,
+          },
+        ],
+        promotions: [
+          {
+            id: 1,
+            title: 'Black Friday',
+            dealType: 'PERCENTAGE_DISCOUNT',
+            products: [],
+          },
+        ],
+        searchParams: {
+          latitude: 10.3157,
+          longitude: 123.8854,
+          radiusKm: 5,
+        },
+      };
+
+      mockStoreService.findNearbyWithPromotions.mockResolvedValue(mockResult);
+
+      const result = await controller.findNearbyWithPromotions(
+        '10.3157',
+        '123.8854',
+        '5',
+      );
+
+      expect(mockStoreService.findNearbyWithPromotions).toHaveBeenCalledWith(
+        10.3157,
+        123.8854,
+        5,
+        {
+          onlyVerified: true,
+          onlyActive: true,
+          onlyActivePromotions: true,
+        },
+      );
+      expect(result).toHaveProperty('stores');
+      expect(result).toHaveProperty('promotions');
+      expect(result).toHaveProperty('searchParams');
+    });
+
+    it('should throw BadRequestException for invalid latitude', async () => {
+      await expect(
+        controller.findNearbyWithPromotions('invalid', '123.8854', '5'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for out of range latitude', async () => {
+      await expect(
+        controller.findNearbyWithPromotions('100', '123.8854', '5'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for invalid longitude', async () => {
+      await expect(
+        controller.findNearbyWithPromotions('10.3157', 'invalid', '5'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for out of range longitude', async () => {
+      await expect(
+        controller.findNearbyWithPromotions('10.3157', '200', '5'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for invalid radius', async () => {
+      await expect(
+        controller.findNearbyWithPromotions('10.3157', '123.8854', '-5'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -248,7 +248,268 @@ export class StoreController {
   }
 
   /**
+   * Retrieves a store with its products and their active promotions.
+   * 
+   * Provides a comprehensive view of the store including all products and their
+   * promotions. Use query parameters to control which data is included for
+   * optimal performance and data transfer.
+   * 
+   * NOTE: This route must come before @Get(':id') to prevent NestJS from 
+   * matching "full" as the :id parameter.
+   * 
+   * @param id - Store ID
+   * @param includeProducts - Include products in response (default: true)
+   * @param includePromotions - Include promotions for products (default: true)
+   * @param onlyActivePromotions - Filter to only active promotions (default: true)
+   * @returns Store with nested products and promotions or null if not found
+   */
+  @Get(':id/full')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get store with products and promotions',
+    description: 'Retrieves a store with all its products and their active promotions. Use query parameters to control which data is included for optimal performance. Perfect for store detail pages.'
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Store ID',
+    example: 1
+  })
+  @ApiQuery({
+    name: 'includeProducts',
+    required: false,
+    type: Boolean,
+    description: 'Include products in the response (default: true)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'includePromotions',
+    required: false,
+    type: Boolean,
+    description: 'Include promotions for each product (default: true)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'onlyActivePromotions',
+    required: false,
+    type: Boolean,
+    description: 'Filter to only active promotions (default: true)',
+    example: true
+  })
+  @ApiOkResponse({
+    description: 'Returns store with nested products and promotions',
+    schema: {
+      example: {
+        id: 1,
+        name: 'Electronics Store',
+        description: 'Best electronics in town',
+        verificationStatus: 'VERIFIED',
+        isActive: true,
+        products: [
+          {
+            id: 1,
+            name: 'iPhone 15',
+            price: '999.99',
+            stock: 50,
+            isActive: true,
+            promotions: [
+              {
+                id: 1,
+                title: 'Black Friday Sale',
+                dealType: 'PERCENTAGE_DISCOUNT',
+                percentageOff: 20,
+                active: true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiBadRequestResponse({
+    description: 'Invalid store ID',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Invalid store id' }
+      }
+    }
+  })
+  async getStoreWithProductsAndPromotions(
+    @Param('id') id: string,
+    @Query('includeProducts') includeProducts?: string,
+    @Query('includePromotions') includePromotions?: string,
+    @Query('onlyActivePromotions') onlyActivePromotions?: string,
+  ) {
+    const storeId = Number(id);
+
+    if (!storeId || Number.isNaN(storeId)) {
+      throw new BadRequestException('Invalid store id');
+    }
+
+    return this.storeService.getStoreWithProductsAndPromotions(storeId, {
+      includeProducts: includeProducts !== 'false',
+      includePromotions: includePromotions === 'true',
+      onlyActivePromotions: onlyActivePromotions !== 'false'
+    });
+  }
+
+  /**
+   * Finds stores near a location with their active promotions.
+   * 
+   * Combines location-based search with promotion discovery. Returns nearby stores
+   * sorted by distance and all active promotions at those stores.
+   * 
+   * Subscription Tier Limits (Consumers only):
+   * - BASIC: Maximum 1km radius
+   * - PRO: Maximum 3km radius
+   * - Retailers: No limit
+   * 
+   * @param latitude - Search latitude (-90 to 90)
+   * @param longitude - Search longitude (-180 to 180)
+   * @param radius - Search radius in km (default: 10km)
+   * @returns Nearby stores and their promotions
+   */
+  @Get('nearby-with-promotions')
+  @UseGuards(JwtAuthGuard, SubscriptionTierGuard)
+  @TierLimit(TierLimitType.CONSUMER_RADIUS)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Find nearby stores with promotions',
+    description: 'Returns stores within a specified radius with their active promotions. Perfect for location-based deal discovery. TIER LIMITS (Consumers only): BASIC tier allows max 1km radius, PRO tier allows max 3km radius. Retailers have no limit.'
+  })
+  @ApiQuery({
+    name: 'latitude',
+    required: true,
+    type: Number,
+    description: 'Latitude of search center point (decimal degrees, -90 to 90)',
+    example: 10.3157,
+    minimum: -90,
+    maximum: 90
+  })
+  @ApiQuery({
+    name: 'longitude',
+    required: true,
+    type: Number,
+    description: 'Longitude of search center point (decimal degrees, -180 to 180)',
+    example: 123.8854,
+    minimum: -180,
+    maximum: 180
+  })
+  @ApiQuery({
+    name: 'radius',
+    required: false,
+    type: Number,
+    description: 'Search radius in kilometers (default: 10km)',
+    example: 5,
+    minimum: 0
+  })
+  @ApiOkResponse({
+    description: 'Returns nearby stores with promotions and search parameters',
+    schema: {
+      example: {
+        stores: [
+          {
+            id: 1,
+            name: 'Electronics Store',
+            distance: 2.5,
+            latitude: 10.3157,
+            longitude: 123.8854,
+            verificationStatus: 'VERIFIED',
+            isActive: true
+          }
+        ],
+        promotions: [
+          {
+            id: 1,
+            title: 'Black Friday Sale',
+            dealType: 'PERCENTAGE_DISCOUNT',
+            percentageOff: 20,
+            active: true,
+            products: [
+              {
+                id: 1,
+                name: 'iPhone 15',
+                price: '999.99',
+                store: {
+                  id: 1,
+                  name: 'Electronics Store'
+                }
+              }
+            ]
+          }
+        ],
+        searchParams: {
+          latitude: 10.3157,
+          longitude: 123.8854,
+          radiusKm: 5
+        }
+      }
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiForbiddenResponse({
+    description: 'Forbidden - Radius exceeds tier limit',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: {
+          type: 'string',
+          example: 'Your BASIC tier allows a maximum radius of 1km. Upgrade to PRO for extended radius.'
+        }
+      }
+    }
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid coordinates or radius',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Invalid latitude or longitude' }
+      }
+    }
+  })
+  async findNearbyWithPromotions(
+    @Query('latitude') latitude: string,
+    @Query('longitude') longitude: string,
+    @Query('radius') radius?: string,
+  ) {
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const rad = radius ? parseFloat(radius) : 10;
+
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      throw new BadRequestException('Invalid latitude (must be between -90 and 90)');
+    }
+
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      throw new BadRequestException('Invalid longitude (must be between -180 and 180)');
+    }
+
+    if (isNaN(rad) || rad < 0) {
+      throw new BadRequestException('Invalid radius (must be >= 0)');
+    }
+
+    return this.storeService.findNearbyWithPromotions(lat, lng, rad, {
+      onlyVerified: true,
+      onlyActive: true,
+      onlyActivePromotions: true
+    });
+  }
+
+  /**
    * Retrieves a single store by its ID.
+   * 
+   * Basic store lookup without additional relations.
+   * For store details with products and promotions, use GET /:id/full instead.
+   * 
+   * NOTE: This route must come after specific routes like 'nearby-with-promotions'
+   * to prevent NestJS from matching those strings as :id parameters.
    * 
    * @param id - Store ID
    * @returns Store object or null if not found

@@ -1296,4 +1296,193 @@ export class PromotionService {
       },
     });
   }
+
+  /**
+   * Retrieves promotions with product and store details.
+   * Useful for promotion listing and discovery.
+   * 
+   * This method provides a comprehensive view of promotions including all products
+   * in each promotion and their associated stores. Supports pagination and filtering
+   * by active status. Uses Prisma include to prevent N+1 queries.
+   * 
+   * @param params - Query parameters including filters and pagination
+   * @param params.where - Prisma where clause for filtering promotions
+   * @param params.pagination - Pagination options (skip, take)
+   * @param params.onlyActive - Filter to only active promotions (default: false)
+   * @returns Promise resolving to paginated promotions with nested products and stores
+   * 
+   * @example
+   * ```typescript
+   * // Get active promotions with products and stores, paginated
+   * const result = await promotionService.getPromotionsWithProductsAndStores({
+   *   pagination: { skip: 0, take: 20 },
+   *   onlyActive: true
+   * });
+   * 
+   * // Returns:
+   * // {
+   * //   data: [...], // Promotion array with products and stores
+   * //   pagination: { skip: 0, take: 20, total: 15 }
+   * // }
+   * 
+   * // Get all promotions with custom filters
+   * const allDeals = await promotionService.getPromotionsWithProductsAndStores({
+   *   where: { dealType: 'PERCENTAGE_DISCOUNT' },
+   *   pagination: { skip: 0, take: 50 },
+   *   onlyActive: false
+   * });
+   * ```
+   */
+  async getPromotionsWithProductsAndStores(params: {
+    where?: Prisma.PromotionWhereInput;
+    pagination?: { skip?: number; take?: number };
+    onlyActive?: boolean;
+  }) {
+    const {
+      where = {},
+      pagination = {},
+      onlyActive = false
+    } = params;
+
+    const { skip = 0, take = 10 } = pagination;
+    const now = new Date();
+
+    // Build the where clause
+    const promotionWhere: Prisma.PromotionWhereInput = { ...where };
+    
+    if (onlyActive) {
+      promotionWhere.active = true;
+      promotionWhere.startsAt = { lte: now };
+      promotionWhere.OR = [
+        { endsAt: null },
+        { endsAt: { gte: now } }
+      ];
+    }
+
+    // Get total count for pagination
+    const total = await this.prisma.promotion.count({ where: promotionWhere });
+
+    // Get promotions with product and store details
+    const promotions = await this.prisma.promotion.findMany({
+      where: promotionWhere,
+      skip,
+      take: Math.min(take, 100), // Enforce max of 100 items
+      include: {
+        promotionProducts: {
+          include: {
+            product: {
+              include: {
+                store: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { id: 'desc' }
+    });
+
+    // Transform to match DTO structure
+    const transformedPromotions = promotions.map((promo: any) => ({
+      ...promo,
+      products: promo.promotionProducts.map((pp: any) => pp.product),
+      promotionProducts: undefined
+    }));
+
+    // Clean up intermediate data
+    transformedPromotions.forEach(p => delete (p as any).promotionProducts);
+
+    return {
+      data: transformedPromotions,
+      pagination: {
+        skip,
+        take: Math.min(take, 100),
+        total
+      }
+    };
+  }
+
+  /**
+   * Retrieves promotions for a specific store.
+   * 
+   * Finds all promotions that include products from the specified store.
+   * Useful for store detail pages showing available deals.
+   * 
+   * @param storeId - Store ID to find promotions for
+   * @param onlyActive - Filter for active promotions (default: true)
+   * @returns Promise resolving to promotions at the store with product details
+   * 
+   * @example
+   * ```typescript
+   * // Get active promotions for store
+   * const activeDeals = await promotionService.getPromotionsByStore(1, true);
+   * 
+   * // Get all promotions (including expired) for store
+   * const allDeals = await promotionService.getPromotionsByStore(1, false);
+   * 
+   * // Each promotion includes:
+   * // - Full promotion details
+   * // - Array of products from this store
+   * // - Store details for each product
+   * ```
+   */
+  async getPromotionsByStore(
+    storeId: number,
+    onlyActive: boolean = true
+  ) {
+    const now = new Date();
+
+    // Build the where clause
+    const promotionWhere: Prisma.PromotionWhereInput = {
+      promotionProducts: {
+        some: {
+          product: {
+            storeId
+          }
+        }
+      }
+    };
+
+    if (onlyActive) {
+      promotionWhere.active = true;
+      promotionWhere.startsAt = { lte: now };
+      promotionWhere.OR = [
+        { endsAt: null },
+        { endsAt: { gte: now } }
+      ];
+    }
+
+    // Get promotions with product and store details
+    const promotions = await this.prisma.promotion.findMany({
+      where: promotionWhere,
+      include: {
+        promotionProducts: {
+          where: {
+            product: {
+              storeId
+            }
+          },
+          include: {
+            product: {
+              include: {
+                store: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { id: 'desc' }
+    });
+
+    // Transform to match DTO structure
+    const transformedPromotions = promotions.map((promo: any) => ({
+      ...promo,
+      products: promo.promotionProducts.map((pp: any) => pp.product),
+      promotionProducts: undefined
+    }));
+
+    // Clean up intermediate data
+    transformedPromotions.forEach(p => delete (p as any).promotionProducts);
+
+    return transformedPromotions;
+  }
 }

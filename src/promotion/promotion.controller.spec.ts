@@ -15,6 +15,8 @@ describe('PromotionController', () => {
     update: jest.fn(),
     remove: jest.fn(),
     addProductsToPromotion: jest.fn(),
+    getPromotionsWithProductsAndStores: jest.fn(),
+    getPromotionsByStore: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -258,6 +260,104 @@ describe('PromotionController', () => {
         1,
         addProductsDto,
       );
+    });
+  });
+
+  describe('GET /promotions/with-details', () => {
+    it('should return paginated promotions with products and stores', async () => {
+      const mockResult = {
+        data: [
+          {
+            id: 1,
+            title: 'Black Friday Sale',
+            dealType: DealType.PERCENTAGE_DISCOUNT,
+            percentageOff: 20,
+            products: [
+              {
+                id: 1,
+                name: 'iPhone 15',
+                price: '999.99',
+                store: { id: 1, name: 'Electronics Store' },
+              },
+            ],
+          },
+        ],
+        pagination: { skip: 0, take: 20, total: 15 },
+      };
+
+      mockPromotionService.getPromotionsWithProductsAndStores.mockResolvedValue(
+        mockResult,
+      );
+
+      const result = await controller.getPromotionsWithDetails('true', '0', '20');
+
+      expect(
+        mockPromotionService.getPromotionsWithProductsAndStores,
+      ).toHaveBeenCalledWith({
+        pagination: { skip: 0, take: 20 },
+        onlyActive: true,
+      });
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('pagination');
+      expect(Array.isArray(result.data)).toBe(true);
+    });
+
+    it('should throw BadRequestException for invalid skip', async () => {
+      await expect(
+        controller.getPromotionsWithDetails('true', '-1', '20'),
+      ).rejects.toThrow('Invalid skip parameter');
+    });
+
+    it('should throw BadRequestException for invalid take', async () => {
+      await expect(
+        controller.getPromotionsWithDetails('true', '0', '200'),
+      ).rejects.toThrow('Invalid take parameter');
+    });
+  });
+
+  describe('GET /promotions/by-store/:storeId', () => {
+    it('should return promotions for a specific store', async () => {
+      const mockPromotions = [
+        {
+          id: 1,
+          title: 'Store Sale',
+          dealType: DealType.PERCENTAGE_DISCOUNT,
+          percentageOff: 15,
+          products: [
+            {
+              id: 1,
+              name: 'Product 1',
+              store: { id: 1, name: 'Store 1' },
+            },
+          ],
+        },
+      ];
+
+      mockPromotionService.getPromotionsByStore.mockResolvedValue(mockPromotions);
+
+      const result = await controller.getPromotionsByStore(1, 'true');
+
+      expect(mockPromotionService.getPromotionsByStore).toHaveBeenCalledWith(1, true);
+      expect(Array.isArray(result)).toBe(true);
+      expect(result[0]).toHaveProperty('products');
+    });
+
+    it('should default onlyActive to true when not provided', async () => {
+      const mockPromotions: any[] = [];
+      mockPromotionService.getPromotionsByStore.mockResolvedValue(mockPromotions);
+
+      await controller.getPromotionsByStore(1, undefined);
+
+      expect(mockPromotionService.getPromotionsByStore).toHaveBeenCalledWith(1, true);
+    });
+
+    it('should use onlyActive as false when explicitly set', async () => {
+      const mockPromotions: any[] = [];
+      mockPromotionService.getPromotionsByStore.mockResolvedValue(mockPromotions);
+
+      await controller.getPromotionsByStore(1, 'false');
+
+      expect(mockPromotionService.getPromotionsByStore).toHaveBeenCalledWith(1, false);
     });
   });
 });
