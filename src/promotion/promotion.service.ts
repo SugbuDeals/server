@@ -857,9 +857,22 @@ export class PromotionService {
         return unitPrice * (sets * buyQty + remainder);
       }
 
-      case DealType.BUNDLE:
-        // Bundle price is for all products together, not per product
-        return promotion.bundlePrice || unitPrice * quantity;
+      case DealType.BUNDLE: {
+        // Bundle price is for all products together, divided by number of products
+        // Each product in the bundle gets an equal share of the bundle price
+        if (!promotion.bundlePrice) {
+          return unitPrice * quantity;
+        }
+        
+        const totalProductsInBundle = promotion.promotionProducts.length;
+        if (totalProductsInBundle === 0) {
+          return unitPrice * quantity;
+        }
+        
+        // Divide bundle price equally among all products in the bundle
+        const pricePerProduct = promotion.bundlePrice / totalProductsInBundle;
+        return pricePerProduct * quantity;
+      }
 
       case DealType.QUANTITY_DISCOUNT: {
         const minQty = promotion.minQuantity || 2;
