@@ -172,4 +172,236 @@ export class StoreService {
     const { where } = params;
     return this.prisma.store.delete({ where });
   }
+
+  /**
+   * Retrieves a store with its products and their active promotions.
+   * Uses Prisma include to prevent N+1 queries.
+   * 
+   * This method provides a comprehensive view of a store, including all its products
+   * and optionally their associated promotions. Perfect for store detail pages.
+   * 
+   * @param storeId - Store ID to retrieve
+   * @param options - Optional configuration for includes
+   * @param options.includeProducts - Include products array in response (default: true)
+   * @param options.includePromotions - Include promotions for each product (default: false)
+   * @param options.onlyActivePromotions - Filter to only active promotions (default: true)
+   * @returns Promise resolving to store with nested data or null if not found
+   * 
+   * @example
+   * ```typescript
+   * // Get store with products and active promotions
+   * const store = await storeService.getStoreWithProductsAndPromotions(1, {
+   *   includeProducts: true,
+   *   includePromotions: true,
+   *   onlyActivePromotions: true
+   * });
+   * 
+   * // Get store with products only (no promotions)
+   * const storeBasic = await storeService.getStoreWithProductsAndPromotions(1, {
+   *   includeProducts: true,
+   *   includePromotions: false
+   * });
+   * ```
+   */
+  async getStoreWithProductsAndPromotions(
+    storeId: number,
+    options?: {
+      includeProducts?: boolean;
+      includePromotions?: boolean;
+      onlyActivePromotions?: boolean;
+    }
+  ) {
+    const includeProducts = options?.includeProducts !== false;
+    const includePromotions = options?.includePromotions || false;
+    const onlyActivePromotions = options?.onlyActivePromotions !== false;
+
+    const now = new Date();
+    
+    // Build the include object dynamically
+    const include: Prisma.StoreInclude = {};
+    
+    if (includeProducts) {
+      include.products = includePromotions ? {
+        include: {
+          promotionProducts: {
+            where: onlyActivePromotions ? {
+              promotion: {
+                active: true,
+                startsAt: { lte: now },
+                OR: [
+                  { endsAt: null },
+                  { endsAt: { gte: now } }
+                ]
+              }
+            } : undefined,
+            include: {
+              promotion: true
+            }
+          }
+        }
+      } : true;
+    }
+
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      include
+    });
+
+    if (!store) {
+      return null;
+    }
+
+    // Transform the response to match DTO structure
+    // Always transform when products are included to clean up promotionProducts field
+    if (includeProducts && 'products' in store) {
+      const transformedStore: any = {
+        ...store,
+        products: store.products.map((product: any) => {
+          const transformed: any = { ...product };
+          
+          // If promotions were included, transform promotionProducts to promotions
+          if (includePromotions && product.promotionProducts) {
+            transformed.promotions = product.promotionProducts.map((pp: any) => pp.promotion);
+          }
+          
+          // Always remove promotionProducts from the response
+          delete transformed.promotionProducts;
+          
+          return transformed;
+        })
+      };
+      
+      return transformedStore;
+    }
+
+    return store;
+  }
+
+  /**
+   * Finds nearby stores with active promotions.
+   * Combines location search with promotion filtering.
+   * 
+   * This method is ideal for location-based promotion discovery, allowing users
+   * to find deals near their current location. Uses Haversine formula for distance
+   * calculation and efficiently filters active promotions.
+   * 
+   * @param latitude - Search latitude (decimal degrees, -90 to 90)
+   * @param longitude - Search longitude (decimal degrees, -180 to 180)
+   * @param radiusKm - Search radius in kilometers
+   * @param options - Filters for stores and promotions
+   * @param options.onlyVerified - Only return verified stores (default: true)
+   * @param options.onlyActive - Only return active stores (default: true)
+   * @param options.onlyActivePromotions - Only return active promotions (default: true)
+   * @returns Promise resolving to nearby stores and their promotions
+   * 
+   * @example
+   * ```typescript
+   * // Find verified stores with active promotions within 5km
+   * const result = await storeService.findNearbyWithPromotions(
+   *   10.3157,
+   *   123.8854,
+   *   5,
+   *   {
+   *     onlyVerified: true,
+   *     onlyActive: true,
+   *     onlyActivePromotions: true
+   *   }
+   * );
+   * 
+   * // Returns:
+   * // {
+   * //   stores: [...], // Nearby stores with distance
+   * //   promotions: [...], // Active promotions at these stores
+   * //   searchParams: { latitude, longitude, radiusKm }
+   * // }
+   * ```
+   */
+  async findNearbyWithPromotions(
+    latitude: number,
+    longitude: number,
+    radiusKm: number,
+    options?: {
+      onlyVerified?: boolean;
+      onlyActive?: boolean;
+      onlyActivePromotions?: boolean;
+    }
+  ) {
+    const onlyVerified = options?.onlyVerified !== false;
+    const onlyActive = options?.onlyActive !== false;
+    const onlyActivePromotions = options?.onlyActivePromotions !== false;
+
+    // Get nearby stores
+    const stores = await this.findNearby(latitude, longitude, radiusKm, {
+      onlyVerified,
+      onlyActive
+    });
+
+    const storeIds = stores.map(s => s.id);
+
+    if (storeIds.length === 0) {
+      return {
+        stores: [],
+        promotions: [],
+        searchParams: { latitude, longitude, radiusKm }
+      };
+    }
+
+    // Build promotion filter
+    const now = new Date();
+    const promotionWhere: Prisma.PromotionWhereInput = {
+      promotionProducts: {
+        some: {
+          product: {
+            storeId: { in: storeIds }
+          }
+        }
+      }
+    };
+
+    if (onlyActivePromotions) {
+      promotionWhere.active = true;
+      promotionWhere.startsAt = { lte: now };
+      promotionWhere.OR = [
+        { endsAt: null },
+        { endsAt: { gte: now } }
+      ];
+    }
+
+    // Get promotions at these stores with product and store details
+    const promotions = await this.prisma.promotion.findMany({
+      where: promotionWhere,
+      include: {
+        promotionProducts: {
+          where: {
+            product: {
+              storeId: { in: storeIds }
+            }
+          },
+          include: {
+            product: {
+              include: {
+                store: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Transform promotions to match DTO structure
+    const transformedPromotions = promotions.map(promo => ({
+      ...promo,
+      products: promo.promotionProducts.map(pp => pp.product),
+      promotionProducts: undefined
+    }));
+
+    // Clean up intermediate data
+    transformedPromotions.forEach(p => delete (p as any).promotionProducts);
+
+    return {
+      stores,
+      promotions: transformedPromotions,
+      searchParams: { latitude, longitude, radiusKm }
+    };
+  }
 }

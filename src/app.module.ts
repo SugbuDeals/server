@@ -12,6 +12,7 @@ import { BookmarkModule } from './bookmark/bookmark.module';
 import { FileModule } from './file/file.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { NotificationModule } from './notification/notification.module';
+import { ViewModule } from './view/view.module';
 
 /**
  * Application Root Module
@@ -22,7 +23,7 @@ import { NotificationModule } from './notification/notification.module';
  * Features:
  * - ScheduleModule: Enables cron jobs and scheduled tasks
  * - All feature modules: Auth, Users, Stores, Products, Categories, Promotions,
- *   Bookmarks, AI, Files, Subscriptions, and Notifications
+ *   Bookmarks, Views, AI, Files, Subscriptions, and Notifications
  * 
  * The PrismaModule is imported to provide database access throughout the application.
  */
@@ -37,6 +38,7 @@ import { NotificationModule } from './notification/notification.module';
     PromotionModule,
     CategoryModule,
     BookmarkModule,
+    ViewModule,
     AiModule,
     FileModule,
     SubscriptionModule,

@@ -9,12 +9,15 @@ import {
   ParseIntPipe,
   UseGuards,
   Request as RequestDecorator,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
   ApiBearerAuth,
   ApiUnauthorizedResponse,
@@ -325,6 +328,115 @@ TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 prod
   }
 
   /**
+   * Retrieves promotions with product and store details (paginated).
+   * 
+   * Provides comprehensive promotion listing with nested product and store data.
+   * Supports pagination and filtering by active status. Perfect for deal discovery.
+   * 
+   * @param onlyActive - Filter to only active promotions
+   * @param skip - Pagination skip
+   * @param take - Pagination take (max 100)
+   * @returns Paginated promotions with products and stores
+   */
+  @Get('with-details')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'List promotions with products and stores',
+    description: 'Retrieves promotions with product and store details. Supports pagination and filtering by active status. Perfect for promotion discovery and deal browsing.'
+  })
+  @ApiQuery({
+    name: 'onlyActive',
+    required: false,
+    type: Boolean,
+    description: 'Filter to only active promotions (default: false)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip for pagination (default: 0)',
+    example: 0,
+    minimum: 0
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Number of records to return (default: 10, max: 100)',
+    example: 20,
+    minimum: 1,
+    maximum: 100
+  })
+  @ApiOkResponse({
+    description: 'Returns paginated promotions with products and stores',
+    schema: {
+      example: {
+        data: [
+          {
+            id: 1,
+            title: 'Black Friday Sale',
+            dealType: 'PERCENTAGE_DISCOUNT',
+            description: '20% off on all products',
+            percentageOff: 20,
+            active: true,
+            products: [
+              {
+                id: 1,
+                name: 'iPhone 15',
+                price: '999.99',
+                store: {
+                  id: 1,
+                  name: 'Electronics Store',
+                  verificationStatus: 'VERIFIED'
+                }
+              }
+            ]
+          }
+        ],
+        pagination: {
+          skip: 0,
+          take: 20,
+          total: 15
+        }
+      }
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiBadRequestResponse({
+    description: 'Invalid query parameters',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string' }
+      }
+    }
+  })
+  async getPromotionsWithDetails(
+    @Query('onlyActive') onlyActive?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    const skipNum = skip ? Number(skip) : 0;
+    const takeNum = take ? Number(take) : 10;
+
+    if (isNaN(skipNum) || skipNum < 0) {
+      throw new BadRequestException('Invalid skip parameter');
+    }
+
+    if (isNaN(takeNum) || takeNum < 1 || takeNum > 100) {
+      throw new BadRequestException('Invalid take parameter (must be 1-100)');
+    }
+
+    return this.promotionService.getPromotionsWithProductsAndStores({
+      pagination: { skip: skipNum, take: takeNum },
+      onlyActive: onlyActive === 'true'
+    });
+  }
+
+  /**
    * Retrieves a list of currently active promotions.
    * 
    * Active promotions are those that:
@@ -348,6 +460,88 @@ TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 prod
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   findActive() {
     return this.promotionService.findActive();
+  }
+
+  /**
+   * Retrieves promotions for a specific store.
+   * 
+   * Finds all promotions that include products from the specified store.
+   * Useful for store detail pages showing available deals.
+   * 
+   * @param storeId - Store ID
+   * @param onlyActive - Filter to only active promotions
+   * @returns Array of promotions with products and store details
+   */
+  @Get('by-store/:storeId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get promotions for a specific store',
+    description: 'Retrieves all promotions that include products from the specified store with full product and store details. Useful for store detail pages showing available deals.'
+  })
+  @ApiParam({
+    name: 'storeId',
+    type: Number,
+    description: 'Store ID',
+    example: 1
+  })
+  @ApiQuery({
+    name: 'onlyActive',
+    required: false,
+    type: Boolean,
+    description: 'Filter to only active promotions (default: true)',
+    example: true
+  })
+  @ApiOkResponse({
+    description: 'Returns promotions with products and store details',
+    schema: {
+      example: [
+        {
+          id: 1,
+          title: 'Black Friday Sale',
+          dealType: 'PERCENTAGE_DISCOUNT',
+          description: '20% off on all products',
+          percentageOff: 20,
+          active: true,
+          products: [
+            {
+              id: 1,
+              name: 'iPhone 15',
+              price: '999.99',
+              store: {
+                id: 1,
+                name: 'Electronics Store',
+                verificationStatus: 'VERIFIED'
+              }
+            }
+          ]
+        }
+      ]
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiBadRequestResponse({
+    description: 'Invalid store ID',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Invalid store id' }
+      }
+    }
+  })
+  async getPromotionsByStore(
+    @Param('storeId', ParseIntPipe) storeId: number,
+    @Query('onlyActive') onlyActive?: string,
+  ) {
+    if (!storeId || isNaN(storeId)) {
+      throw new BadRequestException('Invalid store id');
+    }
+
+    return this.promotionService.getPromotionsByStore(
+      storeId,
+      onlyActive !== 'false'
+    );
   }
 
   /**

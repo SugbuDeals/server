@@ -18,6 +18,8 @@ describe('ProductController', () => {
     createProduct: jest.fn(),
     updateProduct: jest.fn(),
     deleteProduct: jest.fn(),
+    getProductsWithStoreAndPromotions: jest.fn(),
+    getProductWithStoreAndPromotions: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -176,6 +178,100 @@ describe('ProductController', () => {
 
       expect(mockProductService.updateProduct).toHaveBeenCalled();
       expect(result.isActive).toBe(false);
+    });
+  });
+
+  describe('GET /product/with-details', () => {
+    it('should return paginated products with store and promotions', async () => {
+      const mockResult = {
+        data: [
+          {
+            id: 1,
+            name: 'iPhone 15',
+            price: '999.99',
+            store: { id: 1, name: 'Electronics Store' },
+            promotions: [{ id: 1, title: 'Black Friday', active: true }],
+          },
+        ],
+        pagination: { skip: 0, take: 20, total: 45 },
+      };
+
+      mockProductService.getProductsWithStoreAndPromotions.mockResolvedValue(
+        mockResult,
+      );
+
+      const result = await controller.getProductsWithDetails(
+        '1',
+        'true',
+        'true',
+        'true',
+        '0',
+        '20',
+      );
+
+      expect(
+        mockProductService.getProductsWithStoreAndPromotions,
+      ).toHaveBeenCalledWith({
+        where: { storeId: 1, isActive: true },
+        pagination: { skip: 0, take: 20 },
+        includeStore: true,
+        includePromotions: true,
+        onlyActivePromotions: true,
+      });
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('pagination');
+    });
+
+    it('should throw BadRequestException for invalid storeId', async () => {
+      await expect(
+        controller.getProductsWithDetails('invalid', 'true', 'true', 'true', '0', '20'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for invalid skip', async () => {
+      await expect(
+        controller.getProductsWithDetails('1', 'true', 'true', 'true', '-1', '20'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for invalid take', async () => {
+      await expect(
+        controller.getProductsWithDetails('1', 'true', 'true', 'true', '0', '200'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('GET /product/:id/full', () => {
+    it('should return product with store and promotions', async () => {
+      const mockProduct = {
+        id: 1,
+        name: 'iPhone 15',
+        price: '999.99',
+        store: { id: 1, name: 'Electronics Store' },
+        promotions: [{ id: 1, title: 'Black Friday', active: true }],
+      };
+
+      mockProductService.getProductWithStoreAndPromotions.mockResolvedValue(
+        mockProduct,
+      );
+
+      const result = await controller.getProductWithFullDetails('1', 'true', 'true');
+
+      expect(
+        mockProductService.getProductWithStoreAndPromotions,
+      ).toHaveBeenCalledWith(1, {
+        includeStore: true,
+        includePromotions: true,
+        onlyActivePromotions: true,
+      });
+      expect(result).toHaveProperty('store');
+      expect(result).toHaveProperty('promotions');
+    });
+
+    it('should throw BadRequestException for invalid product id', async () => {
+      await expect(
+        controller.getProductWithFullDetails('invalid', 'true', 'true'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

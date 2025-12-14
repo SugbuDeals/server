@@ -144,4 +144,207 @@ export class ProductService {
       where,
     });
   }
+
+  /**
+   * Retrieves products with store and promotion details.
+   * Supports filtering by store, category, active status.
+   * Implements pagination for large result sets.
+   * 
+   * This method provides a comprehensive view of products with optional nested
+   * store and promotion data. Uses Prisma include to prevent N+1 queries and
+   * supports pagination for efficient data transfer.
+   * 
+   * @param params - Query parameters including filters and pagination
+   * @param params.where - Prisma where clause for filtering products
+   * @param params.pagination - Pagination options (skip, take)
+   * @param params.includeStore - Include store details in response (default: false)
+   * @param params.includePromotions - Include promotions in response (default: false)
+   * @param params.onlyActivePromotions - Filter to only active promotions (default: true)
+   * @returns Promise resolving to paginated products with nested store and promotions
+   * 
+   * @example
+   * ```typescript
+   * // Get products with store and active promotions, paginated
+   * const result = await productService.getProductsWithStoreAndPromotions({
+   *   where: { storeId: 1, isActive: true },
+   *   pagination: { skip: 0, take: 20 },
+   *   includeStore: true,
+   *   includePromotions: true,
+   *   onlyActivePromotions: true
+   * });
+   * 
+   * // Returns:
+   * // {
+   * //   data: [...], // Product array with store and promotions
+   * //   pagination: { skip: 0, take: 20, total: 45 }
+   * // }
+   * ```
+   */
+  async getProductsWithStoreAndPromotions(params: {
+    where?: Prisma.ProductWhereInput;
+    pagination?: { skip?: number; take?: number };
+    includeStore?: boolean;
+    includePromotions?: boolean;
+    onlyActivePromotions?: boolean;
+  }) {
+    const {
+      where,
+      pagination = {},
+      includeStore = false,
+      includePromotions = false,
+      onlyActivePromotions = true
+    } = params;
+
+    const { skip = 0, take = 10 } = pagination;
+    const now = new Date();
+
+    // Build the include object dynamically
+    const include: Prisma.ProductInclude = {};
+    
+    if (includeStore) {
+      include.store = true;
+    }
+    
+    if (includePromotions) {
+      include.promotionProducts = {
+        where: onlyActivePromotions ? {
+          promotion: {
+            active: true,
+            startsAt: { lte: now },
+            OR: [
+              { endsAt: null },
+              { endsAt: { gte: now } }
+            ]
+          }
+        } : undefined,
+        include: {
+          promotion: true
+        }
+      };
+    }
+
+    // Get total count for pagination
+    const total = await this.prisma.product.count({ where });
+
+    // Get products with includes
+    const products = await this.prisma.product.findMany({
+      where,
+      skip,
+      take: Math.min(take, 100), // Enforce max of 100 items
+      include,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Transform the response to match DTO structure
+    let transformedProducts = products;
+    if (includePromotions) {
+      transformedProducts = products.map((product: any) => ({
+        ...product,
+        promotions: product.promotionProducts?.map((pp: any) => pp.promotion) || [],
+        promotionProducts: undefined
+      }));
+      // Clean up intermediate data
+      transformedProducts.forEach((p: any) => delete p.promotionProducts);
+    }
+
+    return {
+      data: transformedProducts,
+      pagination: {
+        skip,
+        take: Math.min(take, 100),
+        total
+      }
+    };
+  }
+
+  /**
+   * Retrieves a single product with full details.
+   * 
+   * Provides complete product information including optional store details
+   * and active promotions. Uses Prisma include to prevent N+1 queries.
+   * 
+   * @param productId - Product ID to retrieve
+   * @param options - Optional includes
+   * @param options.includeStore - Include store details in response (default: false)
+   * @param options.includePromotions - Include promotions in response (default: false)
+   * @param options.onlyActivePromotions - Filter to only active promotions (default: true)
+   * @returns Promise resolving to product with store and promotions or null if not found
+   * 
+   * @example
+   * ```typescript
+   * // Get product with store and active promotions
+   * const product = await productService.getProductWithStoreAndPromotions(1, {
+   *   includeStore: true,
+   *   includePromotions: true,
+   *   onlyActivePromotions: true
+   * });
+   * 
+   * // Get product with store only
+   * const productBasic = await productService.getProductWithStoreAndPromotions(1, {
+   *   includeStore: true,
+   *   includePromotions: false
+   * });
+   * ```
+   */
+  async getProductWithStoreAndPromotions(
+    productId: number,
+    options?: {
+      includeStore?: boolean;
+      includePromotions?: boolean;
+      onlyActivePromotions?: boolean;
+    }
+  ) {
+    const includeStore = options?.includeStore || false;
+    const includePromotions = options?.includePromotions || false;
+    const onlyActivePromotions = options?.onlyActivePromotions !== false;
+
+    const now = new Date();
+
+    // Build the include object dynamically
+    const include: Prisma.ProductInclude = {};
+    
+    if (includeStore) {
+      include.store = true;
+    }
+    
+    if (includePromotions) {
+      include.promotionProducts = {
+        where: onlyActivePromotions ? {
+          promotion: {
+            active: true,
+            startsAt: { lte: now },
+            OR: [
+              { endsAt: null },
+              { endsAt: { gte: now } }
+            ]
+          }
+        } : undefined,
+        include: {
+          promotion: true
+        }
+      };
+    }
+
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include
+    });
+
+    if (!product) {
+      return null;
+    }
+
+    // Transform the response to match DTO structure
+    if (includePromotions && 'promotionProducts' in product) {
+      const transformedProduct: any = {
+        ...product,
+        promotions: product.promotionProducts?.map((pp: any) => pp.promotion) || [],
+        promotionProducts: undefined
+      };
+      delete transformedProduct.promotionProducts;
+      return transformedProduct;
+    }
+
+    return product;
+  }
 }

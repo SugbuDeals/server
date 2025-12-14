@@ -108,7 +108,261 @@ export class ProductController {
   }
 
   /**
+   * Retrieves products with store and promotion details (paginated).
+   * 
+   * Provides a comprehensive product listing with optional store and promotion data.
+   * Use query parameters to control which data is included and pagination settings.
+   * 
+   * @param storeId - Filter by store ID
+   * @param isActive - Filter by active status
+   * @param includeStore - Include store details
+   * @param includePromotions - Include promotions
+   * @param skip - Pagination skip
+   * @param take - Pagination take (max 100)
+   * @returns Paginated products with optional nested store and promotions
+   */
+  @Get('with-details')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'List products with store and promotion details',
+    description: 'Retrieves products with optional store and promotion data. Supports pagination and filtering. Use query parameters to control which data is included for optimal performance.'
+  })
+  @ApiQuery({
+    name: 'storeId',
+    required: false,
+    type: Number,
+    description: 'Filter products by store ID',
+    example: 1
+  })
+  @ApiQuery({
+    name: 'isActive',
+    required: false,
+    type: Boolean,
+    description: 'Filter by active status',
+    example: true
+  })
+  @ApiQuery({
+    name: 'includeStore',
+    required: false,
+    type: Boolean,
+    description: 'Include store details in response (default: false)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'includePromotions',
+    required: false,
+    type: Boolean,
+    description: 'Include promotions in response (default: false)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip for pagination (default: 0)',
+    example: 0,
+    minimum: 0
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Number of records to return (default: 10, max: 100)',
+    example: 20,
+    minimum: 1,
+    maximum: 100
+  })
+  @ApiOkResponse({
+    description: 'Returns paginated products with optional store and promotions',
+    schema: {
+      example: {
+        data: [
+          {
+            id: 1,
+            name: 'iPhone 15',
+            price: '999.99',
+            stock: 50,
+            isActive: true,
+            store: {
+              id: 1,
+              name: 'Electronics Store',
+              verificationStatus: 'VERIFIED'
+            },
+            promotions: [
+              {
+                id: 1,
+                title: 'Black Friday Sale',
+                dealType: 'PERCENTAGE_DISCOUNT',
+                percentageOff: 20,
+                active: true
+              }
+            ]
+          }
+        ],
+        pagination: {
+          skip: 0,
+          take: 20,
+          total: 45
+        }
+      }
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiBadRequestResponse({
+    description: 'Invalid query parameters',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string' }
+      }
+    }
+  })
+  async getProductsWithDetails(
+    @Query('storeId') storeId?: string,
+    @Query('isActive') isActive?: string,
+    @Query('includeStore') includeStore?: string,
+    @Query('includePromotions') includePromotions?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    const where: Prisma.ProductWhereInput = {};
+
+    if (storeId) {
+      const storeIdNum = Number(storeId);
+      if (isNaN(storeIdNum)) {
+        throw new BadRequestException('Invalid storeId');
+      }
+      where.storeId = storeIdNum;
+    }
+
+    if (isActive !== undefined) {
+      where.isActive = isActive === 'true';
+    }
+
+    const skipNum = skip ? Number(skip) : 0;
+    const takeNum = take ? Number(take) : 10;
+
+    if (isNaN(skipNum) || skipNum < 0) {
+      throw new BadRequestException('Invalid skip parameter');
+    }
+
+    if (isNaN(takeNum) || takeNum < 1 || takeNum > 100) {
+      throw new BadRequestException('Invalid take parameter (must be 1-100)');
+    }
+
+    return this.productService.getProductsWithStoreAndPromotions({
+      where,
+      pagination: { skip: skipNum, take: takeNum },
+      includeStore: includeStore === 'true',
+      includePromotions: includePromotions === 'true',
+      onlyActivePromotions: true
+    });
+  }
+
+  /**
+   * Retrieves a single product with full details (store and promotions).
+   * 
+   * Provides complete product information including optional store details
+   * and active promotions. Use query parameters to control which data is included.
+   * 
+   * NOTE: This route must come before @Get(':id') to prevent NestJS from 
+   * matching "full" as the :id parameter.
+   * 
+   * @param id - Product ID
+   * @param includeStore - Include store details
+   * @param includePromotions - Include promotions
+   * @returns Product with optional store and promotions or null if not found
+   */
+  @Get(':id/full')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get product with full details',
+    description: 'Retrieves a product with optional store and promotion details. Use query parameters to control which data is included for optimal performance. Perfect for product detail pages.'
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Product ID',
+    example: 1
+  })
+  @ApiQuery({
+    name: 'includeStore',
+    required: false,
+    type: Boolean,
+    description: 'Include store details in response (default: false)',
+    example: true
+  })
+  @ApiQuery({
+    name: 'includePromotions',
+    required: false,
+    type: Boolean,
+    description: 'Include promotions in response (default: false)',
+    example: true
+  })
+  @ApiOkResponse({
+    description: 'Returns product with optional store and promotions',
+    schema: {
+      example: {
+        id: 1,
+        name: 'iPhone 15',
+        price: '999.99',
+        stock: 50,
+        isActive: true,
+        store: {
+          id: 1,
+          name: 'Electronics Store',
+          verificationStatus: 'VERIFIED',
+          isActive: true
+        },
+        promotions: [
+          {
+            id: 1,
+            title: 'Black Friday Sale',
+            dealType: 'PERCENTAGE_DISCOUNT',
+            percentageOff: 20,
+            active: true
+          }
+        ]
+      }
+    }
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
+  @ApiBadRequestResponse({
+    description: 'Invalid product ID',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'Invalid product id' }
+      }
+    }
+  })
+  async getProductWithFullDetails(
+    @Param('id') id: string,
+    @Query('includeStore') includeStore?: string,
+    @Query('includePromotions') includePromotions?: string,
+  ) {
+    const productId = Number(id);
+
+    if (!productId || Number.isNaN(productId)) {
+      throw new BadRequestException('Invalid product id');
+    }
+
+    return this.productService.getProductWithStoreAndPromotions(productId, {
+      includeStore: includeStore === 'true',
+      includePromotions: includePromotions === 'true',
+      onlyActivePromotions: true
+    });
+  }
+
+  /**
    * Retrieves a single product by its ID.
+   * 
+   * Basic product lookup without additional relations.
+   * For product details with store and promotions, use GET /:id/full instead.
    * 
    * @param id - Product ID
    * @returns Product object or null if not found

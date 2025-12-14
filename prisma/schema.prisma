@@ -22,6 +22,7 @@ model User {
   StoreBookmark   StoreBookmark[]
   ProductBookmark ProductBookmark[]
   notifications   Notification[]
+  views           View[]
 }
 
 enum UserRole {
@@ -92,6 +93,9 @@ model Product {
   category          Category?          @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
   bookmarks         ProductBookmark[]
   promotionProducts PromotionProduct[]
+
+  @@index([storeId, isActive]) // List active products by store
+  @@index([categoryId, isActive]) // List active products by category
 }
 
 model Promotion {
@@ -124,6 +128,9 @@ model Promotion {
   voucherValue Float? // Fixed monetary value (e.g., $50 voucher)
 
   promotionProducts PromotionProduct[]
+
+  @@index([active, startsAt, endsAt]) // Filter active promotions efficiently
+  @@index([dealType, active]) // Filter by deal type and status
 }
 
 model PromotionProduct {
@@ -141,6 +148,8 @@ model PromotionProduct {
   @@unique([promotionId, productId])
   @@index([promotionId])
   @@index([productId])
+  @@index([promotionId, productId]) // Query promotions by product
+  @@index([productId, promotionId]) // Query products by promotion
 }
 
 model Category {
@@ -245,4 +254,25 @@ enum VoucherRedemptionStatus {
   VERIFIED  // Retailer scanned and verified consumer
   REDEEMED  // Retailer confirmed, voucher consumed
   CANCELLED // Consumer cancelled or expired
+}
+
+enum EntityType {
+  STORE
+  PRODUCT
+  PROMOTION
+}
+
+model View {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  entityType EntityType
+  entityId   Int
+  viewedAt   DateTime   @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([viewedAt])
 }
