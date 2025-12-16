@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EntityType, Prisma } from 'generated/prisma';
+import { RetailerAnalyticsQueryDto, TimePeriod } from './dto/retailer-analytics-query.dto';
+import { RetailerAnalyticsResponseDto } from './dto/retailer-analytics-response.dto';
+import { StoreResponseDto } from 'src/store/dto/store-response.dto';
+import { ProductResponseDto } from 'src/product/dto/product-response.dto';
 
 /**
  * View Service
@@ -403,5 +407,278 @@ export class ViewService {
         },
       },
     });
+  }
+
+  /**
+   * Gets comprehensive view analytics for a retailer
+   * 
+   * Retrieves view engagement metrics for all stores and products owned by
+   * the retailer, filtered by the specified time period. Returns aggregated
+   * counts and per-entity breakdowns sorted by view count.
+   * 
+   * **Access Control:**
+   * - Only returns analytics for stores/products owned by the retailer
+   * - Validates ownership at the database level
+   * 
+   * **Time Period Handling:**
+   * - Daily: Last 24 hours from now
+   * - Weekly: Last 7 days from now
+   * - Monthly: Last 30 days from now
+   * - Custom: Between startDate and endDate (inclusive)
+   * 
+   * **Entity Type Filtering:**
+   * - If entityType is STORE, only returns store analytics
+   * - If entityType is PRODUCT, only returns product analytics
+   * - If omitted, returns both store and product analytics
+   * 
+   * **Performance:**
+   * - Uses database indexes on viewedAt, entityType, entityId
+   * - Efficient JOINs with Store and Product tables
+   * - Aggregates at database level using groupBy
+   * 
+   * @param userId - ID of the retailer user
+   * @param query - Query parameters including time period and optional entity type filter
+   * @returns Promise resolving to comprehensive analytics data
+   * 
+   * @example
+   * ```typescript
+   * // Get weekly analytics for all entities
+   * const analytics = await viewService.getRetailerAnalytics(userId, {
+   *   timePeriod: TimePeriod.WEEKLY
+   * });
+   * 
+   * // Get monthly product analytics only
+   * const productAnalytics = await viewService.getRetailerAnalytics(userId, {
+   *   timePeriod: TimePeriod.MONTHLY,
+   *   entityType: EntityType.PRODUCT
+   * });
+   * ```
+   */
+  async getRetailerAnalytics(
+    userId: number,
+    query: RetailerAnalyticsQueryDto,
+  ): Promise<RetailerAnalyticsResponseDto> {
+    const { startDate, endDate } = this.calculateDateRange(query.timePeriod, query.startDate, query.endDate);
+
+    const shouldIncludeStores = !query.entityType || query.entityType === EntityType.STORE;
+    const shouldIncludeProducts = !query.entityType || query.entityType === EntityType.PRODUCT;
+
+    const [storeViews, productViews] = await Promise.all([
+      shouldIncludeStores
+        ? this.getRetailerStoreViews(userId, startDate, endDate)
+        : Promise.resolve([]),
+      shouldIncludeProducts
+        ? this.getRetailerProductViews(userId, startDate, endDate)
+        : Promise.resolve([]),
+    ]);
+
+    const totalStoreViews = storeViews.reduce((sum, item) => sum + item.viewCount, 0);
+    const totalProductViews = productViews.reduce((sum, item) => sum + item.viewCount, 0);
+
+    return {
+      totalStoreViews,
+      totalProductViews,
+      storeViews,
+      productViews,
+      timePeriod: query.timePeriod,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+      },
+    };
+  }
+
+  /**
+   * Calculates date range based on time period
+   * 
+   * Converts a time period enum and optional custom dates into a concrete
+   * date range with start and end Date objects.
+   * 
+   * @param timePeriod - Time period enum value
+   * @param startDateStr - Optional start date string (required for custom)
+   * @param endDateStr - Optional end date string (required for custom)
+   * @returns Object with start and end Date objects
+   * @throws {BadRequestException} If custom period is missing dates, dates are invalid, or time period is unknown
+   */
+  private calculateDateRange(
+    timePeriod: TimePeriod,
+    startDateStr?: string,
+    endDateStr?: string,
+  ): { startDate: Date; endDate: Date } {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = now;
+
+    switch (timePeriod) {
+      case TimePeriod.DAILY:
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case TimePeriod.WEEKLY:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case TimePeriod.MONTHLY:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case TimePeriod.CUSTOM:
+        if (!startDateStr || !endDateStr) {
+          throw new BadRequestException(
+            'startDate and endDate are required for custom time period',
+          );
+        }
+        startDate = new Date(startDateStr);
+        endDate = new Date(endDateStr);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          throw new BadRequestException(
+            'Invalid date format. Dates must be valid ISO 8601 strings',
+          );
+        }
+        if (startDate > endDate) {
+          throw new BadRequestException(
+            'startDate must be before or equal to endDate',
+          );
+        }
+        break;
+      default:
+        throw new BadRequestException(`Unknown time period: ${timePeriod}`);
+    }
+
+    return { startDate, endDate };
+  }
+
+  /**
+   * Gets store view analytics for a retailer
+   * 
+   * Retrieves view counts for all stores owned by the retailer within the
+   * specified date range. Returns stores sorted by view count (descending)
+   * with complete store details.
+   * 
+   * **Ownership Validation:**
+   * - Only includes stores where ownerId matches the retailer's userId
+   * - Validated at database level using JOIN
+   * 
+   * **View Counting:**
+   * - Counts unique users per store (using unique constraint)
+   * - Filters by viewedAt timestamp within date range
+   * - Stores with no views are excluded from results
+   * 
+   * @param userId - ID of the retailer user
+   * @param startDate - Start date for filtering views (inclusive)
+   * @param endDate - End date for filtering views (inclusive)
+   * @returns Promise resolving to array of store analytics items sorted by view count
+   */
+  private async getRetailerStoreViews(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<Array<{ store: StoreResponseDto; viewCount: number }>> {
+    const storeViewCounts = await this.prisma.view.groupBy({
+      by: ['entityId'],
+      where: {
+        entityType: EntityType.STORE,
+        viewedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    if (storeViewCounts.length === 0) {
+      return [];
+    }
+
+    const storeIds = storeViewCounts.map((item) => item.entityId);
+    const stores = await this.prisma.store.findMany({
+      where: {
+        id: { in: storeIds },
+        ownerId: userId,
+      },
+    });
+
+    const storeMap = new Map(stores.map((store) => [store.id, store]));
+    const viewCountMap = new Map(
+      storeViewCounts.map((item) => [item.entityId, item._count.id]),
+    );
+
+    return stores
+      .map((store) => ({
+        store: store as StoreResponseDto,
+        viewCount: viewCountMap.get(store.id) ?? 0,
+      }))
+      .filter((item) => item.viewCount > 0)
+      .sort((a, b) => b.viewCount - a.viewCount);
+  }
+
+  /**
+   * Gets product view analytics for a retailer
+   * 
+   * Retrieves view counts for all products from stores owned by the retailer
+   * within the specified date range. Returns products sorted by view count
+   * (descending) with complete product details.
+   * 
+   * **Ownership Validation:**
+   * - Only includes products from stores where ownerId matches the retailer's userId
+   * - Validated at database level using JOIN
+   * 
+   * **View Counting:**
+   * - Counts unique users per product (using unique constraint)
+   * - Filters by viewedAt timestamp within date range
+   * - Products with no views are excluded from results
+   * 
+   * @param userId - ID of the retailer user
+   * @param startDate - Start date for filtering views (inclusive)
+   * @param endDate - End date for filtering views (inclusive)
+   * @returns Promise resolving to array of product analytics items sorted by view count
+   */
+  private async getRetailerProductViews(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<Array<{ product: ProductResponseDto; viewCount: number }>> {
+    const productViewCounts = await this.prisma.view.groupBy({
+      by: ['entityId'],
+      where: {
+        entityType: EntityType.PRODUCT,
+        viewedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    if (productViewCounts.length === 0) {
+      return [];
+    }
+
+    const productIds = productViewCounts.map((item) => item.entityId);
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        store: {
+          ownerId: userId,
+        },
+      },
+    });
+
+    const productMap = new Map(products.map((product) => [product.id, product]));
+    const viewCountMap = new Map(
+      productViewCounts.map((item) => [item.entityId, item._count.id]),
+    );
+
+    return products
+      .map((product) => ({
+        product: {
+          ...product,
+          price: product.price.toString(),
+        } as ProductResponseDto,
+        viewCount: viewCountMap.get(product.id) ?? 0,
+      }))
+      .filter((item) => item.viewCount > 0)
+      .sort((a, b) => b.viewCount - a.viewCount);
   }
 }

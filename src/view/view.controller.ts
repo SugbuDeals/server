@@ -18,14 +18,20 @@ import {
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { ViewService } from './view.service';
 import { RecordViewDto } from './dto/record-view.dto';
 import { ListViewsDto } from './dto/list-views.dto';
 import { ViewResponseDto, ViewCountResponseDto } from './dto/view-response.dto';
+import { RetailerAnalyticsQueryDto } from './dto/retailer-analytics-query.dto';
+import { RetailerAnalyticsResponseDto } from './dto/retailer-analytics-response.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 import { PayloadDTO } from 'src/auth/dto/payload.dto';
-import { EntityType } from 'generated/prisma';
+import { EntityType, UserRole } from 'generated/prisma';
 
 /**
  * View Controller
@@ -39,6 +45,7 @@ import { EntityType } from 'generated/prisma';
  * - `POST /views` - Record a view (authenticated)
  * - `GET /views/list` - List user's view history (authenticated)
  * - `GET /views/:entityType/:entityId/count` - Get view count for entity (public)
+ * - `GET /views/analytics/retailer` - Get retailer analytics (retailer/admin only)
  * 
  * **Authentication:**
  * - Recording and listing views require JWT authentication
@@ -457,5 +464,204 @@ export class ViewController {
       entityId: id,
       viewCount,
     };
+  }
+
+  /**
+   * Get retailer view analytics
+   * 
+   * Returns comprehensive view engagement analytics for stores and products
+   * owned by the authenticated retailer. Supports time period filtering
+   * (daily, weekly, monthly, custom) and optional entity type filtering.
+   * 
+   * **Authentication:** Required (JWT Bearer token)
+   * **Authorization:** Retailer or Admin role required
+   * 
+   * **Time Periods:**
+   * - `daily` - Views from last 24 hours
+   * - `weekly` - Views from last 7 days
+   * - `monthly` - Views from last 30 days
+   * - `custom` - Views between startDate and endDate (requires both dates)
+   * 
+   * **Query Parameters:**
+   * - `timePeriod` (required): Time period for filtering (daily | weekly | monthly | custom)
+   * - `startDate` (optional, required for custom): ISO 8601 start date
+   * - `endDate` (optional, required for custom): ISO 8601 end date
+   * - `entityType` (optional): Filter to STORE or PRODUCT only
+   * 
+   * **Response Includes:**
+   * - Total view counts across all stores and products
+   * - Per-store breakdown with view counts (sorted by popularity)
+   * - Per-product breakdown with view counts (sorted by popularity)
+   * - Time period and date range information
+   * 
+   * **Examples:**
+   * ```
+   * GET /views/analytics/retailer?timePeriod=weekly
+   * // Returns weekly analytics for all stores and products
+   * 
+   * GET /views/analytics/retailer?timePeriod=monthly&entityType=PRODUCT
+   * // Returns monthly analytics for products only
+   * 
+   * GET /views/analytics/retailer?timePeriod=custom&startDate=2024-01-01T00:00:00.000Z&endDate=2024-01-31T23:59:59.999Z
+   * // Returns custom date range analytics
+   * ```
+   * 
+   * **Use Cases:**
+   * - Retailer dashboard analytics
+   * - Identify most popular products/stores
+   * - Track engagement trends over time
+   * - Make data-driven business decisions
+   * - Measure marketing campaign effectiveness
+   * 
+   * **Access Control:**
+   * - Only retailers can view their own analytics
+   * - Admins can also access this endpoint (for future admin analytics features)
+   * - Results are automatically filtered to only include stores/products owned by the retailer
+   * 
+   * @param req - Express request object with authenticated user
+   * @param query - Query parameters for time period and entity type filtering
+   * @returns Promise resolving to comprehensive analytics data
+   */
+  @Get('analytics/retailer')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.RETAILER, UserRole.ADMIN)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get retailer view analytics',
+    description:
+      'Returns comprehensive view engagement analytics for stores and products owned by the authenticated retailer. ' +
+      'Supports time period filtering (daily, weekly, monthly, custom) and optional entity type filtering. ' +
+      'Results include total view counts and per-entity breakdowns sorted by popularity. ' +
+      'Only retailers and admins can access this endpoint.',
+  })
+  @ApiQuery({
+    name: 'timePeriod',
+    enum: ['daily', 'weekly', 'monthly', 'custom'],
+    description:
+      'Time period for filtering analytics. daily = last 24 hours, weekly = last 7 days, ' +
+      'monthly = last 30 days, custom = requires startDate and endDate',
+    required: true,
+    example: 'weekly',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    type: String,
+    description:
+      'Start date for custom time period (ISO 8601 format). Required when timePeriod is "custom".',
+    required: false,
+    example: '2024-01-01T00:00:00.000Z',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    type: String,
+    description:
+      'End date for custom time period (ISO 8601 format). Required when timePeriod is "custom".',
+    required: false,
+    example: '2024-01-31T23:59:59.999Z',
+  })
+  @ApiQuery({
+    name: 'entityType',
+    enum: EntityType,
+    description:
+      'Optional filter by entity type. When specified, only returns analytics for stores or products. ' +
+      'If omitted, returns analytics for both. Only STORE and PRODUCT are valid.',
+    required: false,
+    example: EntityType.PRODUCT,
+  })
+  @ApiOkResponse({
+    description:
+      'Successfully retrieved retailer analytics. Returns comprehensive view engagement metrics ' +
+      'including total counts and per-entity breakdowns sorted by view count.',
+    type: RetailerAnalyticsResponseDto,
+    schema: {
+      example: {
+        totalStoreViews: 150,
+        totalProductViews: 450,
+        storeViews: [
+          {
+            store: {
+              id: 1,
+              name: 'Electronics Store',
+              description: 'Best electronics in town',
+              createdAt: '2024-01-01T00:00:00.000Z',
+              verificationStatus: 'VERIFIED',
+              ownerId: 5,
+              imageUrl: 'http://localhost:3000/files/image.jpg',
+              bannerUrl: null,
+              isActive: true,
+              latitude: 10.3157,
+              longitude: 123.8854,
+              address: '123 Main St',
+              city: 'Cebu City',
+              state: 'Cebu',
+              country: 'Philippines',
+              postalCode: '6000',
+            },
+            viewCount: 75,
+          },
+        ],
+        productViews: [
+          {
+            product: {
+              id: 10,
+              name: 'iPhone 15',
+              description: 'Latest iPhone model',
+              price: '999.99',
+              stock: 50,
+              createdAt: '2024-01-01T00:00:00.000Z',
+              isActive: true,
+              storeId: 1,
+              categoryId: 5,
+              imageUrl: 'http://localhost:3000/files/product.jpg',
+            },
+            viewCount: 200,
+          },
+        ],
+        timePeriod: 'weekly',
+        dateRange: {
+          start: '2024-01-15T00:00:00.000Z',
+          end: '2024-01-22T23:59:59.999Z',
+        },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Unauthorized - JWT token is missing, invalid, or expired',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+      },
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Forbidden - Only retailers and admins can access retailer analytics',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'You do not have permission to access this resource',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Bad Request - Invalid time period, missing required dates for custom period, ' +
+      'or invalid date format',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: [
+          'timePeriod must be one of: daily, weekly, monthly, custom',
+          'startDate and endDate are required for custom time period',
+        ],
+        error: 'Bad Request',
+      },
+    },
+  })
+  async getRetailerAnalytics(
+    @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
+    @Query() query: RetailerAnalyticsQueryDto,
+  ): Promise<RetailerAnalyticsResponseDto> {
+    return this.viewService.getRetailerAnalytics(req.user.sub, query);
   }
 }
