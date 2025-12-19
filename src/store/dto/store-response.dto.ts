@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StoreVerificationStatus } from 'generated/prisma';
+import { StoreRatingStatsDto } from 'src/review/dto/review-response.dto';
 
 /**
  * Store Response DTO
@@ -100,6 +101,13 @@ export class StoreResponseDto {
     nullable: true
   })
   postalCode: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Store rating statistics (included when requested)',
+    type: () => StoreRatingStatsDto,
+    nullable: true,
+  })
+  ratingStats?: StoreRatingStatsDto | null;
 }
 
 /**

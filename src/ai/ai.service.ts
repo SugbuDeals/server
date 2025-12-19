@@ -1727,6 +1727,8 @@ RESPONSE STYLE:
         return `Bundle for ${promotion.bundlePrice} PHP`;
       case 'QUANTITY_DISCOUNT':
         return `Buy ${promotion.minQuantity}+ and get ${promotion.quantityDiscount}% off`;
+      case 'VOUCHER':
+        return `Voucher worth ${promotion.voucherValue} PHP`;
       default:
         return 'Special offer';
     }

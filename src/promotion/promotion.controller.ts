@@ -756,7 +756,7 @@ TIER LIMITS (Retailers only): BASIC tier allows max 5 promotions and max 10 prod
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Confirm voucher redemption (Retailer)',
-    description: 'Retailer confirms the voucher redemption after verification. Marks the voucher as redeemed and it becomes unusable. Voucher must be verified first. Restricted to retailers and admins.',
+    description: 'Retailer confirms the voucher redemption after verification. Marks the voucher as redeemed and it becomes unusable. Each voucher can only be used for one product (selected by consumer when generating the token). Voucher must be verified first. Restricted to retailers and admins.',
   })
   @ApiBody({ type: ConfirmVoucherRedemptionDto })
   @ApiCreatedResponse({

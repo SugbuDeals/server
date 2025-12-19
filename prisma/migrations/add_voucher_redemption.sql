@@ -25,3 +25,6 @@ CREATE INDEX "VoucherRedemption_storeId_idx" ON "VoucherRedemption"("storeId");
 CREATE INDEX "VoucherRedemption_status_idx" ON "VoucherRedemption"("status");
 
 
+
+
+
