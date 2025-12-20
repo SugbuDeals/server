@@ -24,3 +24,4 @@ export class VoucherRedemptionProductDto {
   @Min(1)
   quantity: number;
 }
+
