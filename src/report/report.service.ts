@@ -122,10 +122,12 @@ export class ReportService {
   /**
    * Gets all reports with pagination (admin only).
    * 
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @param status - Optional filter by status
-   * @returns Array of reports
+   * Results are ordered by creation date (newest first).
+   * 
+   * @param skip - Number of records to skip for pagination (default: 0)
+   * @param take - Number of records to return (default: 20)
+   * @param status - Optional filter by report status (PENDING, REVIEWED, RESOLVED, DISMISSED)
+   * @returns Array of report DTOs with full details including reporter, reported user/store, and reviewer information
    */
   async getAllReports(skip: number = 0, take: number = 20, status?: ReportStatus): Promise<ReportResponseDto[]> {
     const where = status ? { status } : {};
@@ -169,9 +171,15 @@ export class ReportService {
   /**
    * Gets a single report by ID (admin only).
    * 
-   * @param reportId - ID of the report
-   * @returns Report details
-   * @throws {NotFoundException} If report doesn't exist
+   * Retrieves a complete report with all related information including:
+   * - Reporter details (ID and name)
+   * - Reported user or store details (ID and name)
+   * - Reviewer details (ID and name, if reviewed)
+   * - Report metadata (status, timestamps, reason, description)
+   * 
+   * @param reportId - ID of the report to retrieve
+   * @returns Report DTO with full details
+   * @throws {NotFoundException} If report with the given ID doesn't exist
    */
   async getReport(reportId: number): Promise<ReportResponseDto> {
     const report = await this.prisma.report.findUnique({
@@ -214,11 +222,19 @@ export class ReportService {
   /**
    * Updates the status of a report (admin only).
    * 
+   * Status transitions:
+   * - When transitioning FROM PENDING to a reviewed status (REVIEWED, RESOLVED, DISMISSED):
+   *   - Sets reviewedAt to current timestamp
+   *   - Sets reviewedById to the admin's ID
+   * - When changing status between reviewed states or back to PENDING:
+   *   - Preserves existing reviewedAt and reviewedById values
+   *   - This maintains review history for audit purposes
+   * 
    * @param adminId - ID of the admin updating the report
    * @param reportId - ID of the report to update
-   * @param updateReportStatusDto - New status
-   * @returns Updated report
-   * @throws {NotFoundException} If report doesn't exist
+   * @param updateReportStatusDto - DTO containing the new status (PENDING, REVIEWED, RESOLVED, or DISMISSED)
+   * @returns Updated report DTO with full details
+   * @throws {NotFoundException} If report with the given ID doesn't exist
    */
   async updateReportStatus(
     adminId: number,
@@ -236,14 +252,25 @@ export class ReportService {
       throw new NotFoundException(`Report with ID ${reportId} not found`);
     }
 
+    // Only set reviewedAt and reviewedById when transitioning FROM PENDING to a reviewed status
+    // Preserve existing review history otherwise
+    const isTransitioningFromPending = existingReport.status === ReportStatus.PENDING && status !== ReportStatus.PENDING;
+    
+    const updateData: {
+      status: ReportStatus;
+      reviewedAt: Date | null;
+      reviewedById: number | null;
+    } = {
+      status,
+      // Preserve existing review history unless transitioning from PENDING
+      reviewedAt: isTransitioningFromPending ? new Date() : existingReport.reviewedAt,
+      reviewedById: isTransitioningFromPending ? adminId : existingReport.reviewedById,
+    };
+
     // Update the report
     const report = await this.prisma.report.update({
       where: { id: reportId },
-      data: {
-        status,
-        reviewedAt: status !== ReportStatus.PENDING ? new Date() : null,
-        reviewedById: status !== ReportStatus.PENDING ? adminId : null,
-      },
+      data: updateData,
       include: {
         reporter: {
           select: {
@@ -280,11 +307,16 @@ export class ReportService {
   /**
    * Gets all reports for a specific user.
    * 
+   * Results are ordered by creation date (newest first).
+   * 
    * @param userId - ID of the user
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @param type - Type of reports to retrieve: 'submitted' for reports submitted by the user (reporterId), 'received' for reports about the user (reportedUserId)
-   * @returns Array of reports
+   * @param skip - Number of records to skip for pagination (default: 0)
+   * @param take - Number of records to return (default: 20)
+   * @param type - Type of reports to retrieve:
+   *   - 'submitted': Reports submitted BY the user (where reporterId = userId)
+   *   - 'received': Reports ABOUT the user (where reportedUserId = userId)
+   *   Defaults to 'submitted'
+   * @returns Array of report DTOs with full details including reporter, reported user/store, and reviewer information
    */
   async getReportsByUser(
     userId: number,
@@ -341,10 +373,12 @@ export class ReportService {
   /**
    * Gets all reports for a specific store.
    * 
-   * @param storeId - ID of the store
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @returns Array of reports
+   * Results are ordered by creation date (newest first).
+   * 
+   * @param storeId - ID of the store to get reports for
+   * @param skip - Number of records to skip for pagination (default: 0)
+   * @param take - Number of records to return (default: 20)
+   * @returns Array of report DTOs with full details including reporter, reported store, and reviewer information
    */
   async getReportsByStore(storeId: number, skip: number = 0, take: number = 20): Promise<ReportResponseDto[]> {
     const reports = await this.prisma.report.findMany({
@@ -384,11 +418,36 @@ export class ReportService {
   }
 
   /**
+   * Checks if a store exists.
+   * 
+   * Used to validate store existence before performing operations that require
+   * a valid store. This ensures proper error handling (404 Not Found) rather
+   * than generic errors.
+   * 
+   * @param storeId - ID of the store to check
+   * @throws {NotFoundException} If store with the given ID doesn't exist
+   */
+  async checkStoreExists(storeId: number): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new NotFoundException(`Store with ID ${storeId} not found`);
+    }
+  }
+
+  /**
    * Checks if a user owns a store.
    * 
-   * @param userId - ID of the user
-   * @param storeId - ID of the store
-   * @returns True if user owns the store, false otherwise
+   * Note: This method returns false if the store doesn't exist. For proper error
+   * handling, use checkStoreExists() first to ensure the store exists before
+   * checking ownership.
+   * 
+   * @param userId - ID of the user to check ownership for
+   * @param storeId - ID of the store to check
+   * @returns True if user owns the store, false otherwise (including if store doesn't exist)
    */
   async isStoreOwner(userId: number, storeId: number): Promise<boolean> {
     const store = await this.prisma.store.findUnique({
@@ -402,8 +461,12 @@ export class ReportService {
   /**
    * Maps a Prisma report object to ReportResponseDto.
    * 
-   * @param report - Prisma report object with relations
-   * @returns ReportResponseDto
+   * Transforms the database model into a DTO suitable for API responses.
+   * Handles optional relations (reporter, reportedUser, reportedStore, reviewedBy)
+   * and ensures null values are properly set.
+   * 
+   * @param report - Prisma report object with optional relations (reporter, reportedUser, reportedStore, reviewedBy)
+   * @returns ReportResponseDto with all fields properly mapped, including optional name fields from relations
    */
   private mapReportToDto(report: {
     id: number;

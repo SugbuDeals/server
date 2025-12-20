@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -52,12 +53,45 @@ export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 
   /**
-   * Creates a new report against a user or store.
-   * Users cannot report themselves or their own stores.
+   * Validates and parses pagination parameters.
    * 
-   * @param req - Request object containing authenticated user information
-   * @param createReportDto - Report data (reportedUserId or reportedStoreId, reason, optional description)
-   * @returns Created report
+   * @param skip - Optional skip parameter as string
+   * @param take - Optional take parameter as string
+   * @returns Object with validated skip and take numbers
+   * @throws {BadRequestException} If parameters are invalid (NaN, negative, or out of range)
+   */
+  private validatePaginationParams(skip?: string, take?: string): { skip: number; take: number } {
+    const skipNum = skip ? parseInt(skip, 10) : 0;
+    const takeNum = take ? parseInt(take, 10) : 20;
+
+    if (isNaN(skipNum) || skipNum < 0) {
+      throw new BadRequestException('skip must be a non-negative integer');
+    }
+
+    if (isNaN(takeNum) || takeNum < 1 || takeNum > 100) {
+      throw new BadRequestException('take must be an integer between 1 and 100');
+    }
+
+    return { skip: skipNum, take: takeNum };
+  }
+
+  /**
+   * Creates a new report against a user or store.
+   * 
+   * Allows authenticated users to report inappropriate behavior from consumers (users) or retailers (stores).
+   * The report is created with PENDING status and awaits admin review.
+   * 
+   * **Validation:**
+   * - Exactly one of `reportedUserId` or `reportedStoreId` must be provided
+   * - Users cannot report themselves
+   * - Store owners cannot report their own stores
+   * - The reported user or store must exist
+   * 
+   * @param req - Request object containing authenticated user information (from JWT token)
+   * @param createReportDto - Report data containing either reportedUserId or reportedStoreId, reason, and optional description
+   * @returns Created report with full details including reporter and reported entity information
+   * @throws {BadRequestException} If validation fails (both/neither IDs provided, self-report, own store report)
+   * @throws {NotFoundException} If reported user or store doesn't exist
    */
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -83,10 +117,18 @@ export class ReportController {
   /**
    * Gets all reports with pagination (admin only).
    * 
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @param status - Optional filter by status
-   * @returns Array of reports
+   * Retrieves all reports in the system with optional filtering by status.
+   * Results are ordered by creation date (newest first).
+   * 
+   * **Pagination:**
+   * - `skip`: Must be >= 0 (default: 0)
+   * - `take`: Must be between 1 and 100 (default: 20)
+   * 
+   * @param skip - Number of records to skip for pagination (validated: must be >= 0)
+   * @param take - Number of records to return (validated: must be 1-100)
+   * @param status - Optional filter by report status (PENDING, REVIEWED, RESOLVED, DISMISSED)
+   * @returns Array of report DTOs with full details
+   * @throws {BadRequestException} If pagination parameters are invalid
    */
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -100,21 +142,22 @@ export class ReportController {
     name: 'skip',
     required: false,
     type: Number,
-    description: 'Number of records to skip for pagination',
+    description: 'Number of records to skip for pagination. Must be a non-negative integer. Defaults to 0.',
     example: 0,
   })
   @ApiQuery({
     name: 'take',
     required: false,
     type: Number,
-    description: 'Number of records to return',
+    description: 'Number of records to return. Must be an integer between 1 and 100. Defaults to 20.',
     example: 20,
   })
   @ApiQuery({
     name: 'status',
     required: false,
     enum: ReportStatus,
-    description: 'Filter by report status',
+    description: 'Filter by report status. Valid values: PENDING, REVIEWED, RESOLVED, DISMISSED.',
+    example: ReportStatus.PENDING,
   })
   @ApiOkResponse({
     description: 'Reports retrieved successfully',
@@ -122,23 +165,28 @@ export class ReportController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ description: 'Forbidden - Admin access required' })
+  @ApiBadRequestResponse({ description: 'Bad request - Invalid pagination parameters (skip must be >= 0, take must be between 1 and 100)' })
   async getAllReports(
     @Query('skip') skip?: string,
     @Query('take') take?: string,
     @Query('status') status?: ReportStatus,
   ): Promise<ReportResponseDto[]> {
-    return this.reportService.getAllReports(
-      skip ? parseInt(skip) : 0,
-      take ? parseInt(take) : 20,
-      status,
-    );
+    const { skip: skipNum, take: takeNum } = this.validatePaginationParams(skip, take);
+    return this.reportService.getAllReports(skipNum, takeNum, status);
   }
 
   /**
    * Gets a single report by ID (admin only).
    * 
-   * @param id - Report ID
-   * @returns Report details
+   * Retrieves complete details of a specific report including:
+   * - Reporter information (ID and name)
+   * - Reported entity information (user or store ID and name)
+   * - Reviewer information (ID and name, if reviewed)
+   * - Report metadata (status, timestamps, reason, description)
+   * 
+   * @param id - Report ID (validated as integer via ParseIntPipe)
+   * @returns Report DTO with full details
+   * @throws {NotFoundException} If report with the given ID doesn't exist
    */
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -168,10 +216,21 @@ export class ReportController {
   /**
    * Updates the status of a report (admin only).
    * 
-   * @param req - Request object containing authenticated admin information
-   * @param id - Report ID
-   * @param updateReportStatusDto - New status
-   * @returns Updated report
+   * Allows admins to change report status and manage the review process.
+   * 
+   * **Status Transition Behavior:**
+   * - When transitioning FROM PENDING to a reviewed status (REVIEWED, RESOLVED, DISMISSED):
+   *   - Automatically sets `reviewedAt` to current timestamp
+   *   - Automatically sets `reviewedById` to the admin's ID
+   * - When changing between reviewed states or back to PENDING:
+   *   - Preserves existing `reviewedAt` and `reviewedById` values
+   *   - Maintains audit trail and review history
+   * 
+   * @param req - Request object containing authenticated admin information (from JWT token)
+   * @param id - Report ID to update (validated as integer via ParseIntPipe)
+   * @param updateReportStatusDto - DTO containing the new status (PENDING, REVIEWED, RESOLVED, or DISMISSED)
+   * @returns Updated report DTO with full details
+   * @throws {NotFoundException} If report with the given ID doesn't exist
    */
   @Patch(':id/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -179,7 +238,7 @@ export class ReportController {
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Update report status (admin only)',
-    description: 'Updates the status of a report. Admin access only.',
+    description: 'Updates the status of a report. Admin access only. When transitioning from PENDING to a reviewed status (REVIEWED, RESOLVED, or DISMISSED), the review timestamp and reviewer ID are automatically set. Review history is preserved when changing status between reviewed states or back to PENDING.',
   })
   @ApiParam({
     name: 'id',
@@ -204,14 +263,32 @@ export class ReportController {
 
   /**
    * Gets all reports for a specific user (admin only, or user viewing their own reports).
-   * Use the 'type' parameter to specify whether to return reports submitted BY the user or reports ABOUT the user.
    * 
-   * @param req - Request object containing authenticated user information
-   * @param userId - User ID
-   * @param type - Type of reports to retrieve: 'submitted' for reports submitted by the user (reporterId), 'received' for reports about the user (reportedUserId). Defaults to 'submitted'.
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @returns Array of reports
+   * Allows users to view reports they've submitted or reports made about them.
+   * Admins can view reports for any user.
+   * 
+   * **Access Control:**
+   * - Admins can view reports for any user
+   * - Regular users can only view their own reports
+   * 
+   * **Report Types:**
+   * - `submitted`: Reports submitted BY the user (where reporterId = userId)
+   * - `received`: Reports ABOUT the user (where reportedUserId = userId)
+   * 
+   * **Pagination:**
+   * - `skip`: Must be >= 0 (default: 0)
+   * - `take`: Must be between 1 and 100 (default: 20)
+   * 
+   * Results are ordered by creation date (newest first).
+   * 
+   * @param req - Request object containing authenticated user information (from JWT token)
+   * @param userId - User ID to get reports for (validated as integer via ParseIntPipe)
+   * @param type - Type of reports: 'submitted' (reports by user) or 'received' (reports about user). Defaults to 'submitted'
+   * @param skip - Number of records to skip for pagination (validated: must be >= 0)
+   * @param take - Number of records to return (validated: must be 1-100)
+   * @returns Array of report DTOs with full details
+   * @throws {ForbiddenException} If user tries to view another user's reports (unless admin)
+   * @throws {BadRequestException} If pagination parameters are invalid
    */
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard)
@@ -237,14 +314,14 @@ export class ReportController {
     name: 'skip',
     required: false,
     type: Number,
-    description: 'Number of records to skip for pagination',
+    description: 'Number of records to skip for pagination. Must be a non-negative integer. Defaults to 0.',
     example: 0,
   })
   @ApiQuery({
     name: 'take',
     required: false,
     type: Number,
-    description: 'Number of records to return',
+    description: 'Number of records to return. Must be an integer between 1 and 100. Defaults to 20.',
     example: 20,
   })
   @ApiOkResponse({
@@ -253,6 +330,7 @@ export class ReportController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ description: 'Forbidden - Can only view own reports unless admin' })
+  @ApiBadRequestResponse({ description: 'Bad request - Invalid pagination parameters (skip must be >= 0, take must be between 1 and 100)' })
   async getReportsByUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('userId', ParseIntPipe) userId: number,
@@ -268,10 +346,12 @@ export class ReportController {
     // Validate type parameter
     const reportType = type === 'received' ? 'received' : 'submitted';
 
+    const { skip: skipNum, take: takeNum } = this.validatePaginationParams(skip, take);
+
     return this.reportService.getReportsByUser(
       userId,
-      skip ? parseInt(skip) : 0,
-      take ? parseInt(take) : 20,
+      skipNum,
+      takeNum,
       reportType,
     );
   }
@@ -279,11 +359,27 @@ export class ReportController {
   /**
    * Gets all reports for a specific store (admin only, or store owner viewing their store's reports).
    * 
-   * @param req - Request object containing authenticated user information
-   * @param storeId - Store ID
-   * @param skip - Number of records to skip
-   * @param take - Number of records to take
-   * @returns Array of reports
+   * Allows store owners to view reports made about their stores.
+   * Admins can view reports for any store.
+   * 
+   * **Access Control:**
+   * - Admins can view reports for any store
+   * - Store owners can only view reports for their own stores
+   * 
+   * **Pagination:**
+   * - `skip`: Must be >= 0 (default: 0)
+   * - `take`: Must be between 1 and 100 (default: 20)
+   * 
+   * Results are ordered by creation date (newest first).
+   * 
+   * @param req - Request object containing authenticated user information (from JWT token)
+   * @param storeId - Store ID to get reports for (validated as integer via ParseIntPipe)
+   * @param skip - Number of records to skip for pagination (validated: must be >= 0)
+   * @param take - Number of records to return (validated: must be 1-100)
+   * @returns Array of report DTOs with full details
+   * @throws {NotFoundException} If store with the given ID doesn't exist
+   * @throws {ForbiddenException} If user tries to view reports for a store they don't own (unless admin)
+   * @throws {BadRequestException} If pagination parameters are invalid
    */
   @Get('store/:storeId')
   @UseGuards(JwtAuthGuard)
@@ -302,14 +398,14 @@ export class ReportController {
     name: 'skip',
     required: false,
     type: Number,
-    description: 'Number of records to skip for pagination',
+    description: 'Number of records to skip for pagination. Must be a non-negative integer. Defaults to 0.',
     example: 0,
   })
   @ApiQuery({
     name: 'take',
     required: false,
     type: Number,
-    description: 'Number of records to return',
+    description: 'Number of records to return. Must be an integer between 1 and 100. Defaults to 20.',
     example: 20,
   })
   @ApiOkResponse({
@@ -318,13 +414,17 @@ export class ReportController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized - Invalid or missing JWT token' })
   @ApiForbiddenResponse({ description: 'Forbidden - Can only view own store reports unless admin' })
-  @ApiNotFoundResponse({ description: 'Store not found' })
+  @ApiNotFoundResponse({ description: 'Store not found - Store with the provided ID does not exist' })
+  @ApiBadRequestResponse({ description: 'Bad request - Invalid pagination parameters (skip must be >= 0, take must be between 1 and 100)' })
   async getReportsByStore(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('storeId', ParseIntPipe) storeId: number,
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ): Promise<ReportResponseDto[]> {
+    // Check if store exists first (throws NotFoundException if not found)
+    await this.reportService.checkStoreExists(storeId);
+
     // Check if user is admin or store owner
     if (req.user.role !== UserRole.ADMIN) {
       const isOwner = await this.reportService.isStoreOwner(req.user.sub, storeId);
@@ -333,10 +433,12 @@ export class ReportController {
       }
     }
 
+    const { skip: skipNum, take: takeNum } = this.validatePaginationParams(skip, take);
+
     return this.reportService.getReportsByStore(
       storeId,
-      skip ? parseInt(skip) : 0,
-      take ? parseInt(take) : 20,
+      skipNum,
+      takeNum,
     );
   }
 }
