@@ -942,13 +942,11 @@ export class PromotionService {
 
     // Check voucher quantity limit if set
     if (promotion.voucherQuantity !== null && promotion.voucherQuantity !== undefined) {
-      // Count how many vouchers have been claimed (all non-CANCELLED redemptions)
+      // Count how many vouchers have been redeemed (only REDEEMED status)
       const redeemedCount = await this.prisma.voucherRedemption.count({
         where: {
           promotionId: dto.promotionId,
-          status: {
-            not: VoucherRedemptionStatus.CANCELLED,
-          },
+          status: VoucherRedemptionStatus.REDEEMED,
         },
       });
 
@@ -1283,12 +1281,13 @@ export class PromotionService {
       });
 
       if (promotion?.voucherQuantity !== null && promotion?.voucherQuantity !== undefined) {
-        // Count how many vouchers have been claimed (all non-CANCELLED redemptions, excluding this one)
+        // Count how many vouchers have been redeemed (only REDEEMED status, excluding this one)
         const redeemedCount = await this.prisma.voucherRedemption.count({
           where: {
             promotionId: redemption.promotionId,
-            status: {
-              not: VoucherRedemptionStatus.CANCELLED,
+            status: VoucherRedemptionStatus.REDEEMED,
+            id: {
+              not: redemptionId,
             },
           },
         });
