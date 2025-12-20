@@ -11,3 +11,4 @@ ON DELETE CASCADE;
 
 -- Add index for better query performance
 CREATE INDEX "ReviewReply_parentReplyId_idx" ON "ReviewReply"("parentReplyId");
+

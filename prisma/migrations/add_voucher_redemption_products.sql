@@ -34,3 +34,4 @@ ON "VoucherRedemptionProduct"("voucherRedemptionId");
 
 CREATE INDEX "VoucherRedemptionProduct_productId_idx" 
 ON "VoucherRedemptionProduct"("productId");
+
