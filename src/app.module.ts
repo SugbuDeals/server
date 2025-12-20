@@ -13,6 +13,9 @@ import { FileModule } from './file/file.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { NotificationModule } from './notification/notification.module';
 import { ViewModule } from './view/view.module';
+import { ReviewModule } from './review/review.module';
+import { ReportModule } from './report/report.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 /**
  * Application Root Module
@@ -23,7 +26,7 @@ import { ViewModule } from './view/view.module';
  * Features:
  * - ScheduleModule: Enables cron jobs and scheduled tasks
  * - All feature modules: Auth, Users, Stores, Products, Categories, Promotions,
- *   Bookmarks, Views, AI, Files, Subscriptions, and Notifications
+ *   Bookmarks, Views, AI, Files, Subscriptions, Notifications, Reviews, Reports, and Monitoring
  * 
  * The PrismaModule is imported to provide database access throughout the application.
  */
@@ -43,6 +46,9 @@ import { ViewModule } from './view/view.module';
     FileModule,
     SubscriptionModule,
     NotificationModule,
+    ReviewModule,
+    ReportModule,
+    MonitoringModule,
   ],
 })
 export class AppModule {}

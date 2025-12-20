@@ -120,7 +120,7 @@ export class PromotionRecommendationItemDto {
   @ApiProperty({ 
     enum: DealType,
     example: DealType.PERCENTAGE_DISCOUNT, 
-    description: 'Deal type: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, or QUANTITY_DISCOUNT' 
+    description: 'Deal type: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, BOGO, BUNDLE, QUANTITY_DISCOUNT, or VOUCHER' 
   })
   dealType: DealType;
 

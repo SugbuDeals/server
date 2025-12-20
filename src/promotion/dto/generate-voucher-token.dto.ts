@@ -1,8 +1,11 @@
-import { IsInt, IsOptional, Min } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, Min } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * DTO for generating a voucher redemption token
+ * DTO for generating a voucher redemption token.
+ * 
+ * Note: The consumer must select which product from the promotion they want to use the voucher for.
+ * A voucher promotion can have multiple products, but each voucher redemption can only be used for one product.
  */
 export class GenerateVoucherTokenDto {
   @ApiProperty({
@@ -23,15 +26,17 @@ export class GenerateVoucherTokenDto {
   @Min(1)
   storeId: number;
 
-  @ApiPropertyOptional({
-    description: 'Optional specific product ID for redemption',
+  @ApiProperty({
+    description: 'Product ID from the promotion that the consumer wants to use the voucher for. Consumer must select one product from the promotion\'s products.',
     example: 1,
     minimum: 1,
   })
-  @IsOptional()
   @IsInt()
   @Min(1)
-  productId?: number;
+  productId: number;
 }
+
+
+
 
 

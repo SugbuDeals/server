@@ -3,6 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * DTO for confirming voucher redemption by retailer
+ * Note: Each voucher can only be used for one product, selected by the consumer when generating the token.
  */
 export class ConfirmVoucherRedemptionDto {
   @ApiProperty({
@@ -13,5 +14,8 @@ export class ConfirmVoucherRedemptionDto {
   @IsNotEmpty()
   token: string;
 }
+
+
+
 
 

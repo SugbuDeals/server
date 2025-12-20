@@ -18,11 +18,19 @@ model User {
   imageUrl         String?
   subscriptionTier SubscriptionTier @default(BASIC)
 
-  Store           Store[]
-  StoreBookmark   StoreBookmark[]
-  ProductBookmark ProductBookmark[]
-  notifications   Notification[]
-  views           View[]
+  Store              Store[]
+  StoreBookmark      StoreBookmark[]
+  ProductBookmark    ProductBookmark[]
+  notifications      Notification[]
+  views              View[]
+  storeReviews       StoreReview[]
+  reviewReplies      ReviewReply[]
+  reviewReactions    ReviewReaction[]
+  reportsCreated     Report[]            @relation("Reporter")
+  reportsReceived    Report[]            @relation("ReportedUser")
+  reportsReviewed    Report[]            @relation("Reviewer")
+  errorLogs          ErrorLog[]
+  performanceMetrics PerformanceMetric[]
 }
 
 enum UserRole {
@@ -68,6 +76,8 @@ model Store {
   owner     User            @relation(fields: [ownerId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   products  Product[]
   bookmarks StoreBookmark[]
+  reviews   StoreReview[]
+  reports   Report[]
 
   @@index([latitude, longitude])
 }
@@ -89,10 +99,11 @@ model Product {
   categoryId  Int?
   imageUrl    String?
 
-  store             Store              @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  category          Category?          @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  bookmarks         ProductBookmark[]
-  promotionProducts PromotionProduct[]
+  store                     Store                      @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  category                  Category?                  @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  bookmarks                 ProductBookmark[]
+  promotionProducts         PromotionProduct[]
+  voucherRedemptionProducts VoucherRedemptionProduct[]
 
   @@index([storeId, isActive]) // List active products by store
   @@index([categoryId, isActive]) // List active products by category
@@ -121,11 +132,12 @@ model Promotion {
   bundlePrice Float? // Fixed price for bundle
 
   // QUANTITY_DISCOUNT fields
-  minQuantity      Int?   // Minimum quantity to qualify
+  minQuantity      Int? // Minimum quantity to qualify
   quantityDiscount Float? // Discount % when min quantity met
 
   // VOUCHER fields
-  voucherValue Float? // Fixed monetary value (e.g., $50 voucher)
+  voucherValue    Float? // Fixed monetary value (e.g., $50 voucher)
+  voucherQuantity Int? // Total number of vouchers available (null = unlimited)
 
   promotionProducts PromotionProduct[]
 
@@ -234,13 +246,15 @@ enum NotificationType {
 
 model VoucherRedemption {
   id          Int                     @id @default(autoincrement())
-  userId      Int                     // Consumer who is redeeming
-  promotionId Int                     // The voucher promotion
-  storeId     Int                     // Store where redemption happens
-  productId   Int?                    // Optional: specific product being redeemed
+  userId      Int // Consumer who is redeeming
+  promotionId Int // The voucher promotion
+  storeId     Int // Store where redemption happens
+  productId   Int? // Optional: specific product being redeemed (deprecated - use redemptionProducts)
   status      VoucherRedemptionStatus @default(PENDING)
   createdAt   DateTime                @default(now()) // When consumer generated QR
-  redeemedAt  DateTime?               // When retailer confirmed redemption
+  redeemedAt  DateTime? // When retailer confirmed redemption
+
+  redemptionProducts VoucherRedemptionProduct[] // Products selected when redeeming
 
   @@unique([userId, promotionId, storeId]) // One redemption per user per voucher per store
   @@index([userId])
@@ -249,10 +263,25 @@ model VoucherRedemption {
   @@index([status])
 }
 
+model VoucherRedemptionProduct {
+  id                  Int      @id @default(autoincrement())
+  voucherRedemptionId Int
+  productId           Int
+  quantity            Int      @default(1) // Quantity of this product
+  createdAt           DateTime @default(now())
+
+  voucherRedemption VoucherRedemption @relation(fields: [voucherRedemptionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  product           Product           @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([voucherRedemptionId, productId]) // One entry per product per redemption
+  @@index([voucherRedemptionId])
+  @@index([productId])
+}
+
 enum VoucherRedemptionStatus {
-  PENDING   // QR generated, waiting for retailer scan
-  VERIFIED  // Retailer scanned and verified consumer
-  REDEEMED  // Retailer confirmed, voucher consumed
+  PENDING // QR generated, waiting for retailer scan
+  VERIFIED // Retailer scanned and verified consumer
+  REDEEMED // Retailer confirmed, voucher consumed
   CANCELLED // Consumer cancelled or expired
 }
 
@@ -275,4 +304,140 @@ model View {
   @@index([userId])
   @@index([entityType, entityId])
   @@index([viewedAt])
+}
+
+model StoreReview {
+  id        Int      @id @default(autoincrement())
+  storeId   Int
+  userId    Int
+  rating    Int? // 1-5 stars (optional - consumers can comment without rating)
+  comment   String // Consumer's comment/review text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store     Store            @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  replies   ReviewReply[]
+  reactions ReviewReaction[]
+
+  @@unique([userId, storeId]) // One review per user per store
+  @@index([storeId])
+  @@index([userId])
+  @@index([rating])
+  @@index([createdAt])
+}
+
+model ReviewReply {
+  id            Int      @id @default(autoincrement())
+  reviewId      Int
+  userId        Int
+  parentReplyId Int?
+  comment       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  review       StoreReview   @relation(fields: [reviewId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  parentReply  ReviewReply?  @relation("ReplyToReply", fields: [parentReplyId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  childReplies ReviewReply[] @relation("ReplyToReply")
+
+  @@index([reviewId])
+  @@index([userId])
+  @@index([parentReplyId])
+  @@index([createdAt])
+}
+
+model ReviewReaction {
+  id        Int      @id @default(autoincrement())
+  reviewId  Int
+  userId    Int
+  isLike    Boolean // true for like, false for dislike
+  createdAt DateTime @default(now())
+
+  review StoreReview @relation(fields: [reviewId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([userId, reviewId]) // One reaction per user per review
+  @@index([reviewId])
+  @@index([userId])
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_CONTENT
+  FAKE_REVIEW
+  SCAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id              Int          @id @default(autoincrement())
+  reporterId      Int // User who created the report
+  reportedUserId  Int? // User being reported (nullable - for reporting consumers)
+  reportedStoreId Int? // Store being reported (nullable - for reporting stores)
+  reason          ReportReason
+  description     String? // Optional additional details
+  status          ReportStatus @default(PENDING)
+  createdAt       DateTime     @default(now())
+  reviewedAt      DateTime?
+  reviewedById    Int? // Admin who reviewed the report
+
+  reporter      User   @relation("Reporter", fields: [reporterId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  reportedUser  User?  @relation("ReportedUser", fields: [reportedUserId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  reportedStore Store? @relation(fields: [reportedStoreId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  reviewedBy    User?  @relation("Reviewer", fields: [reviewedById], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@index([reportedStoreId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reviewedById])
+  @@index([reporterId, createdAt]) // Composite index for efficient queries of submitted reports with sorting
+  @@index([reportedUserId, createdAt]) // Composite index for efficient queries of received reports with sorting
+}
+
+model ErrorLog {
+  id         Int      @id @default(autoincrement())
+  level      String // 'error', 'warn', 'debug'
+  message    String
+  stack      String?
+  endpoint   String? // API endpoint where error occurred
+  method     String? // HTTP method
+  userId     Int? // User who triggered error (if authenticated)
+  statusCode Int? // HTTP status code
+  metadata   Json? // Additional context (request body, query params, etc.)
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([level])
+  @@index([endpoint])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model PerformanceMetric {
+  id           Int      @id @default(autoincrement())
+  endpoint     String // API endpoint
+  method       String // HTTP method
+  responseTime Int // Response time in milliseconds
+  statusCode   Int // HTTP status code
+  userId       Int? // User who made request (if authenticated)
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([endpoint])
+  @@index([createdAt])
+  @@index([statusCode])
+  @@index([method])
 }

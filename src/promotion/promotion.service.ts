@@ -669,6 +669,7 @@ export class PromotionService {
         return {
           ...baseData,
           voucherValue: dto.voucherValue,
+          voucherQuantity: dto.voucherQuantity ?? null,
         };
 
       default:
@@ -939,6 +940,24 @@ export class PromotionService {
       throw new BadRequestException('This promotion is not a voucher type');
     }
 
+    // Check voucher quantity limit if set
+    if (promotion.voucherQuantity !== null && promotion.voucherQuantity !== undefined) {
+      // Count how many vouchers have been redeemed
+      const redeemedCount = await this.prisma.voucherRedemption.count({
+        where: {
+          promotionId: dto.promotionId,
+          status: VoucherRedemptionStatus.REDEEMED,
+        },
+      });
+
+      // Check if voucher limit has been reached
+      if (redeemedCount >= promotion.voucherQuantity) {
+        throw new BadRequestException(
+          `Voucher limit reached. All ${promotion.voucherQuantity} vouchers have been redeemed.`,
+        );
+      }
+    }
+
     // Verify store exists and matches the promotion
     const store = await this.prisma.store.findUnique({
       where: { id: dto.storeId },
@@ -948,15 +967,22 @@ export class PromotionService {
       throw new BadRequestException('Store not found');
     }
 
-    // If productId provided, verify it's in the promotion
-    if (dto.productId) {
-      const productInPromotion = promotion.promotionProducts.some(
-        (pp) => pp.productId === dto.productId,
-      );
+    // Verify the selected product is in the promotion and belongs to the store
+    const selectedProduct = promotion.promotionProducts.find(
+      (pp) => pp.productId === dto.productId,
+    );
 
-      if (!productInPromotion) {
-        throw new BadRequestException('Product not found in this promotion');
-      }
+    if (!selectedProduct) {
+      throw new BadRequestException(
+        'Product not found in this promotion. Please select a product that is part of this voucher promotion.',
+      );
+    }
+
+    // Verify the product belongs to the store
+    if (selectedProduct.product.storeId !== dto.storeId) {
+      throw new BadRequestException(
+        'Selected product does not belong to the specified store',
+      );
     }
 
     // Check if user already has a redemption for this voucher at this store
@@ -1184,6 +1210,7 @@ export class PromotionService {
   /**
    * Confirms voucher redemption by retailer.
    * Marks the voucher as REDEEMED, making it unusable for future redemptions.
+   * Note: Each voucher can only be used for one product (selected by consumer when generating the token).
    * 
    * @param token - JWT token from consumer's QR code
    * @param retailerId - Retailer user ID performing confirmation
@@ -1224,9 +1251,12 @@ export class PromotionService {
         );
       }
 
-      // Get redemption record
+      // Get redemption record with redemption products
       const redemption = await this.prisma.voucherRedemption.findUnique({
         where: { id: redemptionId },
+        include: {
+          redemptionProducts: true,
+        },
       });
 
       if (!redemption) {
@@ -1245,6 +1275,28 @@ export class PromotionService {
         );
       }
 
+      // Check voucher quantity limit before confirming (prevent race conditions)
+      const promotion = await this.prisma.promotion.findUnique({
+        where: { id: redemption.promotionId },
+      });
+
+      if (promotion?.voucherQuantity !== null && promotion?.voucherQuantity !== undefined) {
+        // Count how many vouchers have been redeemed (excluding this one)
+        const redeemedCount = await this.prisma.voucherRedemption.count({
+          where: {
+            promotionId: redemption.promotionId,
+            status: VoucherRedemptionStatus.REDEEMED,
+          },
+        });
+
+        // Check if voucher limit has been reached
+        if (redeemedCount >= promotion.voucherQuantity) {
+          throw new BadRequestException(
+            `Voucher limit reached. All ${promotion.voucherQuantity} vouchers have been redeemed.`,
+          );
+        }
+      }
+
       // Update redemption status to REDEEMED
       await this.prisma.voucherRedemption.update({
         where: { id: redemptionId },
@@ -1253,6 +1305,31 @@ export class PromotionService {
           redeemedAt: new Date(),
         },
       });
+
+      // Decrement voucherQuantity if it exists
+      if (promotion?.voucherQuantity !== null && promotion?.voucherQuantity !== undefined && promotion.voucherQuantity > 0) {
+        const updatedPromotion = await this.prisma.promotion.update({
+          where: { id: redemption.promotionId },
+          data: {
+            voucherQuantity: {
+              decrement: 1,
+            },
+          },
+        });
+
+        // If all vouchers have been exhausted (voucherQuantity reached 0), remove products from PromotionProduct
+        if (updatedPromotion.voucherQuantity !== null && updatedPromotion.voucherQuantity <= 0) {
+          const deletedCount = await this.prisma.promotionProduct.deleteMany({
+            where: {
+              promotionId: redemption.promotionId,
+            },
+          });
+
+          this.logger.log(
+            `All vouchers exhausted for promotion ${redemption.promotionId}. Removed ${deletedCount.count} product(s) from PromotionProduct table.`,
+          );
+        }
+      }
 
       this.logger.log(
         `Voucher redemption ${redemptionId} confirmed by retailer ${retailerId}`,
