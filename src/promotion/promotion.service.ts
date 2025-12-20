@@ -669,6 +669,7 @@ export class PromotionService {
         return {
           ...baseData,
           voucherValue: dto.voucherValue,
+          voucherQuantity: dto.voucherQuantity ?? null,
         };
 
       default:
@@ -1250,9 +1251,12 @@ export class PromotionService {
         );
       }
 
-      // Get redemption record
+      // Get redemption record with redemption products
       const redemption = await this.prisma.voucherRedemption.findUnique({
         where: { id: redemptionId },
+        include: {
+          redemptionProducts: true,
+        },
       });
 
       if (!redemption) {
@@ -1294,7 +1298,6 @@ export class PromotionService {
       }
 
       // Update redemption status to REDEEMED
-      // Note: Each voucher can only be used for one product (selected by consumer when generating token)
       await this.prisma.voucherRedemption.update({
         where: { id: redemptionId },
         data: {
@@ -1302,6 +1305,31 @@ export class PromotionService {
           redeemedAt: new Date(),
         },
       });
+
+      // Decrement voucherQuantity if it exists
+      if (promotion?.voucherQuantity !== null && promotion?.voucherQuantity !== undefined && promotion.voucherQuantity > 0) {
+        const updatedPromotion = await this.prisma.promotion.update({
+          where: { id: redemption.promotionId },
+          data: {
+            voucherQuantity: {
+              decrement: 1,
+            },
+          },
+        });
+
+        // If all vouchers have been exhausted (voucherQuantity reached 0), remove products from PromotionProduct
+        if (updatedPromotion.voucherQuantity !== null && updatedPromotion.voucherQuantity <= 0) {
+          const deletedCount = await this.prisma.promotionProduct.deleteMany({
+            where: {
+              promotionId: redemption.promotionId,
+            },
+          });
+
+          this.logger.log(
+            `All vouchers exhausted for promotion ${redemption.promotionId}. Removed ${deletedCount.count} product(s) from PromotionProduct table.`,
+          );
+        }
+      }
 
       this.logger.log(
         `Voucher redemption ${redemptionId} confirmed by retailer ${retailerId}`,

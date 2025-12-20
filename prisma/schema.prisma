@@ -18,17 +18,19 @@ model User {
   imageUrl         String?
   subscriptionTier SubscriptionTier @default(BASIC)
 
-  Store           Store[]
-  StoreBookmark   StoreBookmark[]
-  ProductBookmark ProductBookmark[]
-  notifications   Notification[]
-  views           View[]
-  storeReviews    StoreReview[]
-  reviewReplies   ReviewReply[]
-  reviewReactions ReviewReaction[]
-  reportsCreated  Report[]       @relation("Reporter")
-  reportsReceived Report[]        @relation("ReportedUser")
-  reportsReviewed Report[]       @relation("Reviewer")
+  Store              Store[]
+  StoreBookmark      StoreBookmark[]
+  ProductBookmark    ProductBookmark[]
+  notifications      Notification[]
+  views              View[]
+  storeReviews       StoreReview[]
+  reviewReplies      ReviewReply[]
+  reviewReactions    ReviewReaction[]
+  reportsCreated     Report[]            @relation("Reporter")
+  reportsReceived    Report[]            @relation("ReportedUser")
+  reportsReviewed    Report[]            @relation("Reviewer")
+  errorLogs          ErrorLog[]
+  performanceMetrics PerformanceMetric[]
 }
 
 enum UserRole {
@@ -97,10 +99,10 @@ model Product {
   categoryId  Int?
   imageUrl    String?
 
-  store                Store                    @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  category             Category?                @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  bookmarks            ProductBookmark[]
-  promotionProducts    PromotionProduct[]
+  store                     Store                      @relation(fields: [storeId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  category                  Category?                  @relation(fields: [categoryId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  bookmarks                 ProductBookmark[]
+  promotionProducts         PromotionProduct[]
   voucherRedemptionProducts VoucherRedemptionProduct[]
 
   @@index([storeId, isActive]) // List active products by store
@@ -134,7 +136,7 @@ model Promotion {
   quantityDiscount Float? // Discount % when min quantity met
 
   // VOUCHER fields
-  voucherValue Float? // Fixed monetary value (e.g., $50 voucher)
+  voucherValue    Float? // Fixed monetary value (e.g., $50 voucher)
   voucherQuantity Int? // Total number of vouchers available (null = unlimited)
 
   promotionProducts PromotionProduct[]
@@ -262,14 +264,14 @@ model VoucherRedemption {
 }
 
 model VoucherRedemptionProduct {
-  id                   Int              @id @default(autoincrement())
-  voucherRedemptionId  Int
-  productId            Int
-  quantity             Int              @default(1) // Quantity of this product
-  createdAt            DateTime         @default(now())
+  id                  Int      @id @default(autoincrement())
+  voucherRedemptionId Int
+  productId           Int
+  quantity            Int      @default(1) // Quantity of this product
+  createdAt           DateTime @default(now())
 
   voucherRedemption VoucherRedemption @relation(fields: [voucherRedemptionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  product            Product          @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  product           Product           @relation(fields: [productId], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([voucherRedemptionId, productId]) // One entry per product per redemption
   @@index([voucherRedemptionId])
@@ -378,20 +380,20 @@ enum ReportStatus {
 
 model Report {
   id              Int          @id @default(autoincrement())
-  reporterId      Int          // User who created the report
-  reportedUserId  Int?         // User being reported (nullable - for reporting consumers)
-  reportedStoreId Int?         // Store being reported (nullable - for reporting stores)
+  reporterId      Int // User who created the report
+  reportedUserId  Int? // User being reported (nullable - for reporting consumers)
+  reportedStoreId Int? // Store being reported (nullable - for reporting stores)
   reason          ReportReason
-  description     String?      // Optional additional details
+  description     String? // Optional additional details
   status          ReportStatus @default(PENDING)
   createdAt       DateTime     @default(now())
   reviewedAt      DateTime?
-  reviewedById    Int?         // Admin who reviewed the report
+  reviewedById    Int? // Admin who reviewed the report
 
-  reporter     User  @relation("Reporter", fields: [reporterId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  reportedUser User? @relation("ReportedUser", fields: [reportedUserId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  reporter      User   @relation("Reporter", fields: [reporterId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  reportedUser  User?  @relation("ReportedUser", fields: [reportedUserId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   reportedStore Store? @relation(fields: [reportedStoreId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  reviewedBy   User?  @relation("Reviewer", fields: [reviewedById], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  reviewedBy    User?  @relation("Reviewer", fields: [reviewedById], references: [id], onUpdate: Cascade, onDelete: SetNull)
 
   @@index([reporterId])
   @@index([reportedUserId])
@@ -399,4 +401,43 @@ model Report {
   @@index([status])
   @@index([createdAt])
   @@index([reviewedById])
+  @@index([reporterId, createdAt]) // Composite index for efficient queries of submitted reports with sorting
+  @@index([reportedUserId, createdAt]) // Composite index for efficient queries of received reports with sorting
+}
+
+model ErrorLog {
+  id         Int      @id @default(autoincrement())
+  level      String // 'error', 'warn', 'debug'
+  message    String
+  stack      String?
+  endpoint   String? // API endpoint where error occurred
+  method     String? // HTTP method
+  userId     Int? // User who triggered error (if authenticated)
+  statusCode Int? // HTTP status code
+  metadata   Json? // Additional context (request body, query params, etc.)
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([level])
+  @@index([endpoint])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model PerformanceMetric {
+  id           Int      @id @default(autoincrement())
+  endpoint     String // API endpoint
+  method       String // HTTP method
+  responseTime Int // Response time in milliseconds
+  statusCode   Int // HTTP status code
+  userId       Int? // User who made request (if authenticated)
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([endpoint])
+  @@index([createdAt])
+  @@index([statusCode])
+  @@index([method])
 }

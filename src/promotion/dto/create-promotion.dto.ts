@@ -244,6 +244,23 @@ export class CreatePromotionDto {
   @IsNumber()
   voucherValue?: number;
 
+  /**
+   * Voucher quantity
+   * Optional for VOUCHER deal type
+   * Total number of vouchers available (null = unlimited)
+   */
+  @ApiPropertyOptional({
+    example: 100,
+    description:
+      'Total number of vouchers available. If not provided or null, vouchers are unlimited.',
+    minimum: 1,
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.dealType === DealType.VOUCHER && o.voucherQuantity !== null && o.voucherQuantity !== undefined)
+  @IsNumber()
+  voucherQuantity?: number | null;
+
   // ============================================
   // Product IDs (required for all deal types)
   // ============================================

@@ -80,6 +80,7 @@ async function bootstrap() {
         .addTag('Notifications', 'User notification management')
         .addTag('AI', 'AI chat, generation, and recommendations')
         .addTag('Files', 'File upload, serving, and management')
+        .addTag('Monitoring', 'System performance and error monitoring (Admin only)')
         .build();
 
       const document = SwaggerModule.createDocument(app, options);

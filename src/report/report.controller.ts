@@ -204,9 +204,11 @@ export class ReportController {
 
   /**
    * Gets all reports for a specific user (admin only, or user viewing their own reports).
+   * Use the 'type' parameter to specify whether to return reports submitted BY the user or reports ABOUT the user.
    * 
    * @param req - Request object containing authenticated user information
    * @param userId - User ID
+   * @param type - Type of reports to retrieve: 'submitted' for reports submitted by the user (reporterId), 'received' for reports about the user (reportedUserId). Defaults to 'submitted'.
    * @param skip - Number of records to skip
    * @param take - Number of records to take
    * @returns Array of reports
@@ -216,13 +218,20 @@ export class ReportController {
   @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Get reports for a user',
-    description: 'Retrieves all reports for a specific user. Admins can view any user\'s reports, users can only view their own reports.',
+    description: 'Retrieves reports for a specific user. Use the \'type\' parameter to specify whether to return reports submitted BY the user or reports ABOUT the user. Admins can view any user\'s reports, users can only view their own reports.',
   })
   @ApiParam({
     name: 'userId',
     type: Number,
     description: 'User ID',
     example: 1,
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: ['submitted', 'received'],
+    description: 'Type of reports to retrieve: \'submitted\' for reports submitted by the user (reporterId), \'received\' for reports about the user (reportedUserId). Defaults to \'submitted\'.',
+    example: 'submitted',
   })
   @ApiQuery({
     name: 'skip',
@@ -247,6 +256,7 @@ export class ReportController {
   async getReportsByUser(
     @Request() req: Request & { user: Omit<PayloadDTO, 'password'> },
     @Param('userId', ParseIntPipe) userId: number,
+    @Query('type') type?: 'submitted' | 'received',
     @Query('skip') skip?: string,
     @Query('take') take?: string,
   ): Promise<ReportResponseDto[]> {
@@ -255,10 +265,14 @@ export class ReportController {
       throw new ForbiddenException('You can only view your own reports');
     }
 
+    // Validate type parameter
+    const reportType = type === 'received' ? 'received' : 'submitted';
+
     return this.reportService.getReportsByUser(
       userId,
       skip ? parseInt(skip) : 0,
       take ? parseInt(take) : 20,
+      reportType,
     );
   }
 

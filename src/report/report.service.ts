@@ -283,11 +283,27 @@ export class ReportService {
    * @param userId - ID of the user
    * @param skip - Number of records to skip
    * @param take - Number of records to take
+   * @param type - Type of reports to retrieve: 'submitted' for reports submitted by the user (reporterId), 'received' for reports about the user (reportedUserId)
    * @returns Array of reports
    */
-  async getReportsByUser(userId: number, skip: number = 0, take: number = 20): Promise<ReportResponseDto[]> {
+  async getReportsByUser(
+    userId: number,
+    skip: number = 0,
+    take: number = 20,
+    type: 'submitted' | 'received' = 'submitted',
+  ): Promise<ReportResponseDto[]> {
+    // Build where clause based on type
+    const where: any = {};
+    if (type === 'submitted') {
+      // Reports submitted BY the user
+      where.reporterId = userId;
+    } else {
+      // Reports ABOUT the user
+      where.reportedUserId = userId;
+    }
+
     const reports = await this.prisma.report.findMany({
-      where: { reportedUserId: userId },
+      where,
       skip,
       take,
       orderBy: { createdAt: 'desc' },
